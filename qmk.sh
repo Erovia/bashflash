@@ -10,6 +10,12 @@ MENU_ITEMS[2]="Quit"
 readonly MENU_ITEMS
 MENU_LENGTH=${#MENU_ITEMS[@]}
 active_item=0
+push() { local -n "stack=$1"; shift; stack+=("$@"); }
+peek() { local -n "stack=$1"; printf %s\\n "${stack[-1]}"; }
+pop() { peek "$1"; unset "$1[-1]"; }
+push "menu_stack" "main"
+
+DEBUG=""
 
 setup_terminal() {
 	# Setup the terminal for the TUI.
@@ -67,7 +73,7 @@ title_line() {
 	#printf '\e[%sH\e[30;41m%*s\r%s %s%s\e[m\e[%sH\e[K\e8' \
 	printf '\e[H\r\e[30;41m%*s\r%s v%s by %s\e[m' \
 		"$COLUMNS" "" \
-		"qmk.fm" \
+		"qmk.sh" \
 		"$VERSION" \
 		"$MAINTAINER"
 }
@@ -84,12 +90,12 @@ status_line() {
 	# '\e8':       Restore cursor position.
 	#              This is more widely supported than '\e[u'.
 	#printf '\e[%sH\e[30;41m%*s\r%s %s%s\e[m\e[%sH\e[K\e8' \
-	printf '\e[%sH\e[30;41m%*s\r%s v%s by %s\e[m\e[H' \
+	printf '\e[%sH\e[30;41m%*s\r%s\e[%s;%sH%s\e[m' \
 		"$LINES" \
 		"$COLUMNS" "" \
-		"qmk.fm" \
-		"$VERSION" \
-		"$MAINTAINER"
+		"Move: UP/DOWN; Enter: ENTER; Back: ESC" \
+		"$LINES" "$((COLUMNS-${#DEBUG}))" "$DEBUG"
+		#"$LINES" "hello" \
 }
 
 side_lines() {
@@ -111,33 +117,96 @@ side_lines() {
 
 redraw() {
 	clear_screen
-	# title_line
-	menu
+	title_line
+	DEBUG="$(peek 'menu_stack')"
 	status_line
+	printf "\e[3H"
+	if [[ "$(peek 'menu_stack')" == "main" ]]; then
+		main_menu
+	fi
 }
 
 
 
-menu() {
+main_menu() {
 	for ((i = 0; i < $MENU_LENGTH; i++)); do
 		if [[ "$i" -eq "$active_item" ]]; then
 			printf "\e[31m>\e[0m "
 		fi
 		printf "%s\n" "${MENU_ITEMS[$i]}"
 	done
-	# printf "%s\n" "Flash"
-	# printf "%s\n" "Doctor"
-	# printf "%s\n" "Quit"
+}
+
+quit() {
+	exit ${1:-0}
+}
+
+doctor() {
+	echo "Shell: $SHELL"
+	echo "Shell version: $BASH_VERSION"
+
+	printf "\n\n\e[31m>\e[0m Back to menu"
+	read
+	pop "menu_stack"
+}
+
+flash() {
+	local file=""
+	local multiflash="false"
+	local active_item=0
+	local declare -a MENU_ITEMS
+	MENU_ITEMS[0]="Flash"
+	MENU_ITEMS[1]="Auto-Flash"
+	readonly MENU_ITEMS
+	MENU_LENGTH=${#MENU_ITEMS[@]}
+
+	echo "Flashing stuff will come here."
+	for ((i = 0; i < $MENU_LENGTH; i++)); do
+		if [[ "$i" -eq "$active_item" ]]; then
+			printf "\e[31m>\e[0m "
+		fi
+		printf "%s\n" "${MENU_ITEMS[$i]}"
+	done
+	printf "\n\n\e[31m>\e[0m Back to menu"
+	read
+	pop "menu_stack"
 }
 
 key() {
+	# Handle special key presses.
+	[[ $1 == $'\e' ]] && {
+		read "${read_flags[@]}" -rsn 2
+
+		# Handle a normal escape key press.
+		[[ ${1}${REPLY} == $'\e\e['* ]] &&
+			read "${read_flags[@]}" -rsn 1 _
+
+		local special_key=${1}${REPLY}
+	}
+
+	#DEBUG="${1}:${REPLY}:${special_key}"
+	#case ${special_key:-$1} in
 	case "$REPLY" in
-		# "\e[B")
-		"j")
+		# Go up
+		"[A"|"0A"|"k")
 			active_item=$((active_item - 1))
 			;;
-		"k")
+		# Go down
+		"[B"|"0B"|"j")
 			active_item=$((active_item + 1))
+			;;
+		# ENTER
+		"")
+			local selected_menu="$(echo ${MENU_ITEMS[active_item]} | tr '[:upper:]' '[:lower:]')"
+			push "menu_stack" "$selected_menu"
+			redraw
+			eval "$selected_menu"
+			#${MENU_ITEMS[active_item],,}
+			#quit 1
+			;;
+		# Quit
+		"q")
+			quit 0
 			;;
 	esac
 	active_item=$(( ((active_item % MENU_LENGTH) + MENU_LENGTH) % MENU_LENGTH))
@@ -168,13 +237,14 @@ main() {
 
 	get_term_size
 	setup_terminal
-	# title_line
-	status_line
-	menu
+	redraw
+	#title_line
+	#status_line
+	#menu
 
 	while true; do
 		# menu
-		sleep 0.1
+		#sleep 0.1
 		read "${read_flags[@]}" -srn 1 && key "$REPLY"
 
 		# Exit if there is no longer a terminal attached.
