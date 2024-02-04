@@ -20,7 +20,14 @@ DEFAULT="\e[0m"
 RED="\e[31m"
 BORDER="\e[30;41m"
 #################################################
-
+#
+#    POSITIONS
+#
+#################################################
+FIRST_LINE="\e[H"
+#LAST_LINE="\e
+TEXT_START="\e[3H"
+#################################################
 
 declare -a MENU_ITEMS
 MENU_ITEMS[0]="Flash"
@@ -90,11 +97,9 @@ title_line() {
 	# '\e8':       Restore cursor position.
 	#              This is more widely supported than '\e[u'.
 	#printf '\e[%sH\e[30;41m%*s\r%s %s%s\e[m\e[%sH\e[K\e8' \
-	printf '\e[H\r\e[30;41m%*s\r%s v%s by %s\e[m' \
+	printf "${FIRST_LINE}\r${BORDER}%*s\r%s v${VERSION} by ${MAINTAINER}\e[0m" \
 		"$COLUMNS" "" \
-		"qmk.sh" \
-		"$VERSION" \
-		"$MAINTAINER"
+		"qmk.sh"
 }
 
 status_line() {
@@ -109,8 +114,8 @@ status_line() {
 	# '\e8':       Restore cursor position.
 	#              This is more widely supported than '\e[u'.
 	#printf '\e[%sH\e[30;41m%*s\r%s %s%s\e[m\e[%sH\e[K\e8' \
-	printf '\e[%sH\e[30;41m%*s\r%s\e[%s;%sH%s\e[m' \
-		"$LINES" \
+	# printf '\e[%sH\e[30;41m%*s\r%s\e[%s;%sH%s\e[m' \
+	printf "\e[${LINES}H${BORDER}%*s\r%s\e[%s;%sH%s${DEFAULT}" \
 		"$COLUMNS" "" \
 		"Move: UP/DOWN; Enter: ENTER; Back: ESC" \
 		"$LINES" "$((COLUMNS-${#DEBUG}))" "$DEBUG"
@@ -139,7 +144,7 @@ redraw() {
 	title_line
 	DEBUG="$(peek 'menu_stack')"
 	status_line
-	printf "\e[3H"
+	printf "$TEXT_START"
 	if [[ "$(peek 'menu_stack')" == "main" ]]; then
 		main_menu
 	fi
@@ -150,7 +155,7 @@ redraw() {
 main_menu() {
 	for ((i = 0; i < $MENU_LENGTH; i++)); do
 		if [[ "$i" -eq "$active_item" ]]; then
-			printf "\e[31m>\e[0m "
+			printf "${RED}>${DEFAULT} "
 		fi
 		printf "%s\n" "${MENU_ITEMS[$i]}"
 	done
@@ -200,7 +205,7 @@ doctor() {
 		printf "${RED}Not available${DEFAULT}, flashing AVR-based boards might not be possible.\n"
 	fi
 
-	printf "\n\n\e[31m>\e[0m Back to menu"
+	printf "\n\n\e${RED}>${DEFAULT} Back to menu"
 	read
 	pop "menu_stack"
 }
@@ -218,11 +223,11 @@ flash() {
 	echo "Flashing stuff will come here."
 	for ((i = 0; i < $MENU_LENGTH; i++)); do
 		if [[ "$i" -eq "$active_item" ]]; then
-			printf "\e[31m>\e[0m "
+			printf "${RED}>${DEFAULT} "
 		fi
 		printf "%s\n" "${MENU_ITEMS[$i]}"
 	done
-	printf "\n\n\e[31m>\e[0m Back to menu"
+	printf "\n\n${RED}>${DEFAULT} Back to menu"
 	read
 	pop "menu_stack"
 }
