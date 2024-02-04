@@ -2,6 +2,25 @@
 VERSION="0.0.1"
 MAINTAINER="Erovia"
 
+OS="$(uname -s)"
+#################################################
+#
+#    TOOLS
+#
+#################################################
+DFU_UTIL=$(command -v dfu-util 2>&1)
+DFU_PROGRAMMER=$(command -v dfu-programmer 2>&1)
+AVRDUDE=$(command -v avrdudex 2>&1)
+#################################################
+#
+#    COLOURS
+#
+#################################################
+DEFAULT="\e[0m"
+RED="\e[31m"
+BORDER="\e[30;41m"
+#################################################
+
 
 declare -a MENU_ITEMS
 MENU_ITEMS[0]="Flash"
@@ -142,8 +161,44 @@ quit() {
 }
 
 doctor() {
-	echo "Shell: $SHELL"
-	echo "Shell version: $BASH_VERSION"
+	printf "${BORDER}Environment:${DEFAULT}\n"
+	echo "OS: $OS"
+	echo "Shell: $SHELL - $BASH_VERSION"
+	if [ $(echo $OS | tr '[:upper:]' '[:lower:]')  == "linux" ]; then
+		echo -n "Udev file: "
+		QMK_UDEV_FILE="50-qmk.rules"
+		if [ -s "/usr/lib/udev/rules.d/$QMK_UDEV_FILE" ]; then
+			echo "/usr/lib/udev/rules.d/$QMK_UDEV_FILE"
+		elif [ -s "/usr/local/lib/udev/rules.d/$QMK_UDEV_FILE" ]; then
+			echo "/usr/local/lib/udev/rules.d/$QMK_UDEV_FILE"
+		elif [ -s "/run/udev/rules.d/$QMK_UDEV_FILE" ]; then
+			echo "/run/udev/rules.d/$QMK_UDEV_FILE"
+		elif [ -s "/etc/udev/rules.d/$QMK_UDEV_FILE" ]; then
+			echo "/etc/udev/rules.d/$QMK_UDEV_FILE"
+		else
+			printf "${RED}Not available${DEFAULT}, flashing without root will likely fail.\n"
+		fi
+	fi
+
+	printf "\n${BORDER}Tools:${DEFAULT}\n"
+	echo -n "Dfu-util version: "
+	if [[ -x "$DFU_UTIL" ]]; then
+		"$DFU_UTIL" -V | awk '/^dfu-util/ {print $2}'
+	else
+		printf "${RED}Not available${DEFAULT}, flashing ARM-based boards might not be possible.\n"
+	fi
+	echo -n "Avrdude version: "
+	if [[ -x "$AVRDUDE" ]]; then
+		"$AVRDUDE" 2>&1 | awk '/^avrdude version/ {print $3}' | tr -d ','
+	else
+		printf "${RED}Not available${DEFAULT}, flashing ProMicro-based boards might not be possible.\n"
+	fi
+	echo -n "Dfu-programmer version: "
+	if [[ -x "$DFU_PROGRAMMER" ]]; then
+		"$DFU_PROGRAMMER" -V 2>&1 | awk '/^dfu-programmer/ {print $2}'
+	else
+		printf "${RED}Not available${DEFAULT}, flashing AVR-based boards might not be possible.\n"
+	fi
 
 	printf "\n\n\e[31m>\e[0m Back to menu"
 	read
