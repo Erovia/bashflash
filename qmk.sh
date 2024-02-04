@@ -28,18 +28,28 @@ FIRST_LINE="\e[H"
 #LAST_LINE="\e
 TEXT_START="\e[3H"
 #################################################
-
-declare -a MENU_ITEMS
-MENU_ITEMS[0]="Flash"
-MENU_ITEMS[1]="Doctor"
-MENU_ITEMS[2]="Quit"
-readonly MENU_ITEMS
-MENU_LENGTH=${#MENU_ITEMS[@]}
+#
+#    MENUS
+#
+#################################################
+declare -a MAIN_MENU
+MAIN_MENU[0]="Flash"
+MAIN_MENU[1]="Doctor"
+MAIN_MENU[2]="Quit"
+MAIN_MENU_LENGTH=${#MAIN_MENU[@]}
 active_item=0
+declare -a FLASH_MENU
+FLASH_MENU[0]="Flash"
+FLASH_MENU[1]="Multi-Flash"
+FLASH_MENU_LENGTH=${#FLASH_MENU[@]}
+
 push() { local -n "stack=$1"; shift; stack+=("$@"); }
 peek() { local -n "stack=$1"; printf %s\\n "${stack[-1]}"; }
 pop() { peek "$1"; unset "$1[-1]"; }
 push "menu_stack" "main"
+#################################################
+
+
 
 DEBUG=""
 
@@ -145,19 +155,34 @@ redraw() {
 	DEBUG="$(peek 'menu_stack')"
 	status_line
 	printf "$TEXT_START"
-	if [[ "$(peek 'menu_stack')" == "main" ]]; then
-		main_menu
-	fi
+	draw_menu
+	# if [[ "$(peek 'menu_stack')" == "main" ]]; then
+		# main_menu
+		# draw_menu
+	# fi
 }
 
+draw_menu() {
+	local current_menu_name="$(echo $(peek 'menu_stack')_MENU | tr '[:lower:]' '[:upper:]')"
+	declare -n current_menu=$current_menu_name
+	local current_menu_length="${#current_menu[@]}"
 
-
-main_menu() {
-	for ((i = 0; i < $MENU_LENGTH; i++)); do
+	for ((i = 0; i < $current_menu_length; i++)); do
 		if [[ "$i" -eq "$active_item" ]]; then
 			printf "${RED}>${DEFAULT} "
 		fi
-		printf "%s\n" "${MENU_ITEMS[$i]}"
+		# printf "%s\n" "${current_menu}[$i]"
+		printf "${current_menu[$i]}\n"
+	done
+}
+
+
+main_menu() {
+	for ((i = 0; i < $MAIN_MENU_LENGTH; i++)); do
+		if [[ "$i" -eq "$active_item" ]]; then
+			printf "${RED}>${DEFAULT} "
+		fi
+		printf "%s\n" "${MAIN_MENU[$i]}"
 	done
 }
 
@@ -166,6 +191,8 @@ quit() {
 }
 
 doctor() {
+	push "menu_stack" "doctor"
+	redraw
 	printf "${BORDER}Environment:${DEFAULT}\n"
 	echo "OS: $OS"
 	echo "Shell: $SHELL - $BASH_VERSION"
@@ -211,22 +238,19 @@ doctor() {
 }
 
 flash() {
-	local file=""
-	local multiflash="false"
-	local active_item=0
-	local declare -a MENU_ITEMS
-	MENU_ITEMS[0]="Flash"
-	MENU_ITEMS[1]="Auto-Flash"
-	readonly MENU_ITEMS
-	MENU_LENGTH=${#MENU_ITEMS[@]}
+	push "menu_stack" "flash"
+	redraw
+	# local file=""
+	# local multiflash="false"
+	# local active_item=0
 
 	echo "Flashing stuff will come here."
-	for ((i = 0; i < $MENU_LENGTH; i++)); do
-		if [[ "$i" -eq "$active_item" ]]; then
-			printf "${RED}>${DEFAULT} "
-		fi
-		printf "%s\n" "${MENU_ITEMS[$i]}"
-	done
+	# for ((i = 0; i < $FLASH_MENU_LENGTH; i++)); do
+	# 	if [[ "$i" -eq "$active_item" ]]; then
+	# 		printf "${RED}>${DEFAULT} "
+	# 	fi
+	# 	printf "%s\n" "${FLASH_MENU[$i]}"
+	# done
 	printf "\n\n${RED}>${DEFAULT} Back to menu"
 	read
 	pop "menu_stack"
@@ -257,11 +281,10 @@ key() {
 			;;
 		# ENTER
 		"")
-			local selected_menu="$(echo ${MENU_ITEMS[active_item]} | tr '[:upper:]' '[:lower:]')"
-			push "menu_stack" "$selected_menu"
-			redraw
+			local selected_menu="$(echo ${MAIN_MENU[active_item]} | tr '[:upper:]' '[:lower:]')"
+			#redraw
 			eval "$selected_menu"
-			#${MENU_ITEMS[active_item],,}
+			#${MAIN_MENU[active_item],,}
 			#quit 1
 			;;
 		# Quit
@@ -269,7 +292,7 @@ key() {
 			quit 0
 			;;
 	esac
-	active_item=$(( ((active_item % MENU_LENGTH) + MENU_LENGTH) % MENU_LENGTH))
+	active_item=$(( ((active_item % MAIN_MENU_LENGTH) + MAIN_MENU_LENGTH) % MAIN_MENU_LENGTH))
 	redraw
 }
 
