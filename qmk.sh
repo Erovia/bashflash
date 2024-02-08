@@ -36,13 +36,14 @@ declare -a MAIN_MENU
 MAIN_MENU[0]="Flash"
 MAIN_MENU[1]="Doctor"
 MAIN_MENU[2]="Quit"
+MAIN_MENU_CONTENT="Super simple flashing TUI for QMK"
 declare -a FLASH_MENU
 FLASH_MENU[0]="Flash"
 FLASH_MENU[1]="Back"
+FLASH_MENU_CONTENT="Flashing stuff will go here..."
 declare -a DOCTOR_MENU
 DOCTOR_MENU[0]="Back"
-# DOCTOR_MENU[0]="Flash"
-# DOCTOR_MENU[1]="Multi-Flash"
+DOCTOR_MENU_CONTENT=""
 
 peek() { local -n "stack=$1"; printf %s\\n "${stack[-1]}"; }
 menu_housekeeping() {
@@ -50,20 +51,14 @@ menu_housekeeping() {
 	current_menu_name="$(echo $(peek 'menu_stack')_MENU | tr '[:lower:]' '[:upper:]')"
 	declare -ng "current_menu=$current_menu_name"
 	current_menu_length="${#current_menu[@]}"
+	current_menu_content_name="${current_menu_name}_CONTENT"
+	declare -ng current_menu_content="$current_menu_content_name"
 	# echo "$(date +%Y-%m-%d/%H:%M:%S) - $current_menu_name: ${current_menu[@]}: ${#current_menu[@]}" >> qmk.log
 }
 push() { local -n "stack=$1"; shift; stack+=("$@"); menu_housekeeping; }
 pop() { peek "$1"; unset "$1[-1]"; menu_housekeeping; }
 push "menu_stack" "main"
-# push "menu_stack" "flash"
-# pop "menu_stack"
-
-MENU_POSITION=""
 #################################################
-CONTENT=""
-
-
-DEBUG=""
 
 setup_terminal() {
 	# Setup the terminal for the TUI.
@@ -162,27 +157,19 @@ side_lines() {
 }
 
 redraw() {
-	if [[ -z "$CONTENT" ]]; then
-		clear_screen
-	fi
+	clear_screen
 	title_line
-	DEBUG="$current_menu_name"
+	#DEBUG="$current_menu_name"
+	#DEBUG="$current_menu_content"
 	status_line
 	printf "$TEXT_START"
-	if [[ -n "$CONTENT" ]]; then
-		printf "$CONTENT\n\n"
+	if [[ -n "$current_menu_content" ]]; then
+		printf "$current_menu_content\n\n"
 	fi
-	#read
 	draw_menu
-	# if [[ "$(peek 'menu_stack')" == "main" ]]; then
-		# main_menu
-		# draw_menu
-	# fi
 }
 
 draw_menu() {
-	echo "$(date +%Y-%m-%d/%H:%M:%S) - draw_menu - $active_item" >> qmk.log
-	echo "$(date +%Y-%m-%d/%H:%M:%S) - draw_menu - $current_menu_name: ${current_menu[@]}: ${#current_menu[@]}" >> qmk.log
 	if [[ -n "${current_menu[@]}" ]]; then
 		for ((i = 0; i < $current_menu_length; i++)); do
 			if [[ "$i" -eq "$active_item" ]]; then
@@ -199,51 +186,52 @@ quit() {
 }
 
 back() {
-	CONTENT=""
 	pop "menu_stack"
+	CONTENT=""
 }
 
 
 doctor() {
 	push "menu_stack" "doctor"
 
-	CONTENT="${BORDER}Environment:${DEFAULT}\n"
-	CONTENT+="OS: $OS\n"
-	CONTENT+="Shell: $SHELL - $BASH_VERSION\n"
+	DOCTOR_MENU_CONTENT=""
+	DOCTOR_MENU_CONTENT="${BORDER}Environment:${DEFAULT}\n"
+	DOCTOR_MENU_CONTENT+="OS: $OS\n"
+	DOCTOR_MENU_CONTENT+="Shell: $SHELL - $BASH_VERSION\n"
 	if [ $(echo $OS | tr '[:upper:]' '[:lower:]')  == "linux" ]; then
-		CONTENT+="Udev file: "
+		DOCTOR_MENU_CONTENT+="Udev file: "
 		QMK_UDEV_FILE="50-qmk.rules"
 		if [ -s "/usr/lib/udev/rules.d/$QMK_UDEV_FILE" ]; then
-			CONTENT+="/usr/lib/udev/rules.d/$QMK_UDEV_FILE"
+			DOCTOR_MENU_CONTENT+="/usr/lib/udev/rules.d/$QMK_UDEV_FILE"
 		elif [ -s "/usr/local/lib/udev/rules.d/$QMK_UDEV_FILE" ]; then
-			CONTENT+="/usr/local/lib/udev/rules.d/$QMK_UDEV_FILE"
+			DOCTOR_MENU_CONTENT+="/usr/local/lib/udev/rules.d/$QMK_UDEV_FILE"
 		elif [ -s "/run/udev/rules.d/$QMK_UDEV_FILE" ]; then
-			CONTENT+="/run/udev/rules.d/$QMK_UDEV_FILE"
+			DOCTOR_MENU_CONTENT+="/run/udev/rules.d/$QMK_UDEV_FILE"
 		elif [ -s "/etc/udev/rules.d/$QMK_UDEV_FILE" ]; then
-			CONTENT+="/etc/udev/rules.d/$QMK_UDEV_FILE"
+			DOCTOR_MENU_CONTENT+="/etc/udev/rules.d/$QMK_UDEV_FILE"
 		else
-			CONTENT+="${RED}Not available${DEFAULT}, flashing without root will likely fail.\n"
+			DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing without root will likely fail.\n"
 		fi
 	fi
 
-	CONTENT+="\n${BORDER}Tools:${DEFAULT}\n"
-	CONTENT+="Dfu-util version: "
+	DOCTOR_MENU_CONTENT+="\n${BORDER}Tools:${DEFAULT}\n"
+	DOCTOR_MENU_CONTENT+="Dfu-util version: "
 	if [[ -x "$DFU_UTIL" ]]; then
-		CONTENT+=$("$DFU_UTIL" -V | awk '/^dfu-util/ {print $2}')
+		DOCTOR_MENU_CONTENT+=$("$DFU_UTIL" -V | awk '/^dfu-util/ {print $2}')
 	else
-		CONTENT+="${RED}Not available${DEFAULT}, flashing ARM-based boards might not be possible.\n"
+		DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing ARM-based boards might not be possible.\n"
 	fi
-	CONTENT+="Avrdude version: "
+	DOCTOR_MENU_CONTENT+="Avrdude version: "
 	if [[ -x "$AVRDUDE" ]]; then
-		CONTENT+=$("$AVRDUDE" 2>&1 | awk '/^avrdude version/ {print $3}' | tr -d ',')
+		DOCTOR_MENU_CONTENT+=$("$AVRDUDE" 2>&1 | awk '/^avrdude version/ {print $3}' | tr -d ',')
 	else
-		CONTENT+="${RED}Not available${DEFAULT}, flashing ProMicro-based boards might not be possible.\n"
+		DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing ProMicro-based boards might not be possible.\n"
 	fi
-	CONTENT+="Dfu-programmer version: "
+	DOCTOR_MENU_CONTENT+="Dfu-programmer version: "
 	if [[ -x "$DFU_PROGRAMMER" ]]; then
-		CONTENT+=$("$DFU_PROGRAMMER" -V 2>&1 | awk '/^dfu-programmer/ {print $2}')
+		DOCTOR_MENU_CONTENT+=$("$DFU_PROGRAMMER" -V 2>&1 | awk '/^dfu-programmer/ {print $2}')
 	else
-		CONTENT+="${RED}Not available${DEFAULT}, flashing AVR-based boards might not be possible.\n"
+		DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing AVR-based boards might not be possible.\n"
 	fi
 
 	redraw
