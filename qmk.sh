@@ -38,9 +38,12 @@ MAIN_MENU[1]="Doctor"
 MAIN_MENU[2]="Quit"
 MAIN_MENU_CONTENT="Super simple flashing TUI for QMK"
 declare -a FLASH_MENU
-FLASH_MENU[0]="Flash"
+FLASH_MENU[0]="Firmware"
 FLASH_MENU[1]="Back"
 FLASH_MENU_CONTENT="Flashing stuff will go here..."
+declare -a FIRMWARE_MENU
+FIRMWARE_MENU[0]="Back"
+FIRMWARE_MENU_CONTENT="Select the firmware you'd like to flash:"
 declare -a DOCTOR_MENU
 DOCTOR_MENU[0]="Back"
 DOCTOR_MENU_CONTENT=""
@@ -59,7 +62,10 @@ push() { local -n "stack=$1"; shift; stack+=("$@"); menu_housekeeping; }
 pop() { peek "$1"; unset "$1[-1]"; menu_housekeeping; }
 push "menu_stack" "main"
 #################################################
-
+#
+#    TUI stuff
+#
+#################################################
 setup_terminal() {
 	# Setup the terminal for the TUI.
 	# '\e[?1049h': Use alternative screen buffer.
@@ -179,19 +185,12 @@ draw_menu() {
 		done
 	fi
 }
-
-
-quit() {
-	exit ${1:-0}
-}
-
-back() {
-	pop "menu_stack"
-	CONTENT=""
-}
-
-
-doctor() {
+#################################################
+#
+#    Doctor
+#
+#################################################
+MAIN_MENU_doctor() {
 	push "menu_stack" "doctor"
 
 	DOCTOR_MENU_CONTENT=""
@@ -218,43 +217,55 @@ doctor() {
 	DOCTOR_MENU_CONTENT+="Dfu-util version: "
 	if [[ -x "$DFU_UTIL" ]]; then
 		DOCTOR_MENU_CONTENT+=$("$DFU_UTIL" -V | awk '/^dfu-util/ {print $2}')
+		DOCTOR_MENU_CONTENT+="\n"
 	else
 		DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing ARM-based boards might not be possible.\n"
 	fi
 	DOCTOR_MENU_CONTENT+="Avrdude version: "
 	if [[ -x "$AVRDUDE" ]]; then
 		DOCTOR_MENU_CONTENT+=$("$AVRDUDE" 2>&1 | awk '/^avrdude version/ {print $3}' | tr -d ',')
+		DOCTOR_MENU_CONTENT+="\n"
 	else
 		DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing ProMicro-based boards might not be possible.\n"
 	fi
 	DOCTOR_MENU_CONTENT+="Dfu-programmer version: "
 	if [[ -x "$DFU_PROGRAMMER" ]]; then
-		DOCTOR_MENU_CONTENT+=$("$DFU_PROGRAMMER" -V 2>&1 | awk '/^dfu-programmer/ {print $2}')
+		DOCTOR_MENU_CONTENT+=$("$DFU_PROGRAMMER" --version 2>&1 | awk '/^dfu-programmer/ {print $2}')
+		DOCTOR_MENU_CONTENT+="\n"
+		#DOCTOR_MENU_CONTENT+=$("$DFU_PROGRAMMER" -V 2>&1 | awk '/^dfu-programmer/ {print $2}'\n)
 	else
 		DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing AVR-based boards might not be possible.\n"
 	fi
 
 	redraw
 }
-
-
-flash() {
-	push "menu_stack" "flash"
-	redraw
+#################################################
+#
+#    Flashing
+#
+#################################################
+FLASH_MENU_firmware() {
+	push "menu_stack" "firmware"
 	# local file=""
-	# local multiflash="false"
-	# local active_item=0
+	redraw
+}
+MAIN_MENU_flash() {
+	push "menu_stack" "flash"
+	# local file=""
+	redraw
+}
+#################################################
+#
+#    Special functions
+#
+#################################################
+quit() {
+	exit ${1:-0}
+}
 
-	echo
-	echo "Flashing stuff will come here."
-	# for ((i = 0; i < $FLASH_MENU_LENGTH; i++)); do
-	# 	if [[ "$i" -eq "$active_item" ]]; then
-	# 		printf "${RED}>${DEFAULT} "
-	# 	fi
-	# 	printf "%s\n" "${FLASH_MENU[$i]}"
-	# done
-	# read
-	# pop "menu_stack"
+back() {
+	pop "menu_stack"
+	CONTENT=""
 }
 
 key() {
@@ -283,8 +294,13 @@ key() {
 		# ENTER
 		"")
 			local selected_menu="$(echo ${current_menu[active_item]} | tr '[:upper:]' '[:lower:]')"
+			if [[ "$selected_menu" == "back" || "$selected_menu" == "quit" ]]; then
+				# These are special, non menu-specific commands
+				eval "${selected_menu}"
+			else
+				eval "${current_menu_name}_${selected_menu}"
+			fi
 			#redraw
-			eval "$selected_menu"
 			#${MAIN_MENU[active_item],,}
 			#quit 1
 			;;
@@ -300,6 +316,7 @@ key() {
 	active_item=$(( ((active_item % current_menu_length) + current_menu_length) % current_menu_length))
 	redraw 
 }
+#################################################
 
 #get_term_size
 #clear_screen
