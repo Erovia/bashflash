@@ -377,6 +377,8 @@ MAIN_MENU_doctor() {
 	DOCTOR_MENU_CONTENT="${BORDER}Environment:${DEFAULT}\n"
 	DOCTOR_MENU_CONTENT+="OS: $OS\n"
 	DOCTOR_MENU_CONTENT+="Shell: $SHELL - $BASH_VERSION\n"
+	DOCTOR_MENU_CONTENT+="Terminfo: $TERM\n"
+	DOCTOR_MENU_CONTENT+="Window size: ${COLUMNS}x${LINES}\n"
 	if [ $(echo $OS | tr '[:upper:]' '[:lower:]')  == "linux" ]; then
 		DOCTOR_MENU_CONTENT+="Udev file: "
 		QMK_UDEV_FILE="50-qmk.rules"
