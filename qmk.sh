@@ -187,6 +187,186 @@ draw_menu() {
 }
 #################################################
 #
+#    File management
+#
+#################################################
+read_dir() {
+    # Read a directory to an array and sort it directories first.
+    local dirs
+    local files
+    local item_index
+
+    # Set window name.
+    printf '\e]2;fff: %s\e'\\ "$PWD"
+
+    # If '$PWD' is '/', unset it to avoid '//'.
+    [[ $PWD == / ]] && PWD=
+
+    for item in "$PWD"/*; do
+        if [[ -d $item ]]; then
+            dirs+=("$item")
+
+            # Find the position of the child directory in the
+            # parent directory list.
+            [[ $item == "$OLDPWD" ]] &&
+                ((previous_index=item_index))
+            ((item_index++))
+        else
+            files+=("$item")
+        fi
+    done
+
+    list=("${dirs[@]}" "${files[@]}")
+
+    # Indicate that the directory is empty.
+    [[ -z ${list[0]} ]] &&
+        list[0]=empty
+
+    ((list_total=${#list[@]}-1))
+
+    # Save the original dir in a second list as a backup.
+    cur_list=("${list[@]}")
+}
+
+print_line() {
+    # Format the list item and print it.
+    local file_name=${list[$1]##*/}
+    local file_ext=${file_name##*.}
+    local format
+    local suffix
+
+    # If the dir item doesn't exist, end here.
+    if [[ -z ${list[$1]} ]]; then
+        return
+
+    # Directory.
+    elif [[ -d ${list[$1]} ]]; then
+        format+="\\e[${di:-1;3${FFF_COL1:-2}}m"
+        suffix+="/"
+
+    # Block special file.
+    elif [[ -b ${list[$1]} ]]; then
+        format+="\\e[${bd:-40;33;01}m"
+
+    # Character special file.
+    elif [[ -c ${list[$1]} ]]; then
+        format+="\\e[${cd:-40;33;01}m"
+
+    # Executable file.
+    elif [[ -x ${list[$1]} ]]; then
+        format+="\\e[${ex:-01;32}m"
+
+    # Symbolic Link (broken).
+    elif [[ -h ${list[$1]} && ! -e ${list[$1]} ]]; then
+        format+="\\e[${mi:-01;31;7}m"
+
+    # Symbolic Link.
+    elif [[ -h ${list[$1]} ]]; then
+        format+="\\e[${ln:-01;36}m"
+
+    # Fifo file.
+    elif [[ -p ${list[$1]} ]]; then
+        format+="\\e[${pi:-40;33}m"
+
+    # Socket file.
+    elif [[ -S ${list[$1]} ]]; then
+        format+="\\e[${so:-01;35}m"
+
+    # Color files that end in a pattern as defined in LS_COLORS.
+    # 'BASH_REMATCH' is an array that stores each REGEX match.
+    elif [[ $FFF_LS_COLORS == 1 &&
+            $ls_patterns &&
+            $file_name =~ ($ls_patterns)$ ]]; then
+        match=${BASH_REMATCH[0]}
+        file_ext=ls_${match//[^a-zA-Z0-9=\\;]/_}
+        format+="\\e[${!file_ext:-${fi:-37}}m"
+
+    # Color files based on file extension and LS_COLORS.
+    # Check if file extension adheres to POSIX naming
+    # standard before checking if it's a variable.
+    elif [[ $FFF_LS_COLORS == 1 &&
+            $file_ext != "$file_name" &&
+            $file_ext =~ ^[a-zA-Z0-9_]*$ ]]; then
+        file_ext=ls_${file_ext}
+        format+="\\e[${!file_ext:-${fi:-37}}m"
+
+    else
+        format+="\\e[${fi:-37}m"
+    fi
+
+    # If the list item is under the cursor.
+    (($1 == scroll)) &&
+        format+="\\e[1;3${FFF_COL4:-6};7m"
+
+    # If the list item is marked for operation.
+    [[ ${marked_files[$1]} == "${list[$1]:-null}" ]] && {
+        format+="\\e[3${FFF_COL3:-1}m${mark_pre}"
+        suffix+="${mark_post}"
+    }
+
+    # Escape the directory string.
+    # Remove all non-printable characters.
+    file_name=${file_name//[^[:print:]]/^[}
+
+    printf '\r%b%s\e[m\r' \
+        "${file_pre}${format}" \
+        "${file_name}${suffix}${file_post}"
+}
+
+draw_dir() {
+    # Print the max directory items that fit in the scroll area.
+    local scroll_start=$scroll
+    local scroll_new_pos
+    local scroll_end
+
+    # When going up the directory tree, place the cursor on the position
+    # of the previous directory.
+    ((find_previous == 1)) && {
+        ((scroll_start=previous_index))
+        ((scroll=scroll_start))
+
+        # Clear the directory history. We're here now.
+        find_previous=
+    }
+
+    # If current dir is near the top of the list, keep scroll position.
+    if ((list_total < max_items || scroll < max_items/2)); then
+        ((scroll_start=0))
+        ((scroll_end=max_items))
+        ((scroll_new_pos=scroll+1))
+
+    # If current dir is near the end of the list, keep scroll position.
+    elif ((list_total - scroll < max_items/2)); then
+        ((scroll_start=list_total-max_items+1))
+        ((scroll_new_pos=max_items-(list_total-scroll)))
+        ((scroll_end=list_total+1))
+
+    # If current dir is somewhere in the middle, center scroll position.
+    else
+        ((scroll_start=scroll-max_items/2))
+        ((scroll_end=scroll_start+max_items))
+        ((scroll_new_pos=max_items/2+1))
+    fi
+
+    # Reset cursor position.
+    printf '\e[H'
+
+    for ((i=scroll_start;i<scroll_end;i++)); {
+        # Don't print one too many newlines.
+        ((i > scroll_start)) &&
+            printf '\n'
+
+        print_line "$i"
+    }
+
+    # Move the cursor to its new position if it changed.
+    # If the variable 'scroll_new_pos' is empty, the cursor
+    # is moved to line '0'.
+    printf '\e[%sH' "$scroll_new_pos"
+    ((y=scroll_new_pos))
+}
+#################################################
+#
 #    Doctor
 #
 #################################################
