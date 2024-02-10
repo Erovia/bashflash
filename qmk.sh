@@ -43,6 +43,7 @@ FLASH_MENU[1]="Back"
 FLASH_MENU_CONTENT="Flashing stuff will go here..."
 declare -a FIRMWARE_MENU
 FIRMWARE_MENU[0]="Back"
+FIRMWARE_MENU[1]=".."
 FIRMWARE_MENU_CONTENT="Select the firmware you'd like to flash:"
 declare -a DOCTOR_MENU
 DOCTOR_MENU[0]="Back"
@@ -191,126 +192,35 @@ draw_menu() {
 #
 #################################################
 read_dir() {
-    # Read a directory to an array and sort it directories first.
-    local dirs
-    local files
-    local item_index
+	local dirs
+	local files
 
-    # Set window name.
-    printf '\e]2;fff: %s\e'\\ "$PWD"
+	# If '$FIRMWARE_MENU' already has items, reset it to the 2 original entries
+	[[ "${#FIRMWARE_MENU[@]}" -gt "2" ]]; FIRMWARE_MENU=("${FIRMWARE_MENU[@]:0:2}")
 
-    # If '$PWD' is '/', unset it to avoid '//'.
-    [[ $PWD == / ]] && PWD=
+	# If '$PWD' is '/', unset it to avoid '//'
+	[[ "$PWD" == "/" ]] && PWD=
 
-    for item in "$PWD"/*; do
-        if [[ -d $item ]]; then
-            dirs+=("$item")
+	for item in "$PWD"/*; do
+		if [[ -d "$item" ]]; then
+			dirs+=($(basename "$item"))
+		else
+			ext="${item##*.}"
+			if [[ "$ext" == "hex" || "$ext" == "bin" ]]; then
+				files+=($(basename "$item"))
+			fi
+		fi
+	done
 
-            # Find the position of the child directory in the
-            # parent directory list.
-            [[ $item == "$OLDPWD" ]] &&
-                ((previous_index=item_index))
-            ((item_index++))
-        else
-            files+=("$item")
-        fi
-    done
+	for dir in "${dirs[@]}"; do
+		FIRMWARE_MENU+=("${dir}/")
+	done
+	for file in "${files[@]}"; do
+		FIRMWARE_MENU+=("${file}")
+	done
 
-    list=("${dirs[@]}" "${files[@]}")
-
-    # Indicate that the directory is empty.
-    [[ -z ${list[0]} ]] &&
-        list[0]=empty
-
-    ((list_total=${#list[@]}-1))
-
-    # Save the original dir in a second list as a backup.
-    cur_list=("${list[@]}")
-}
-
-print_line() {
-    # Format the list item and print it.
-    local file_name=${list[$1]##*/}
-    local file_ext=${file_name##*.}
-    local format
-    local suffix
-
-    # If the dir item doesn't exist, end here.
-    if [[ -z ${list[$1]} ]]; then
-        return
-
-    # Directory.
-    elif [[ -d ${list[$1]} ]]; then
-        format+="\\e[${di:-1;3${FFF_COL1:-2}}m"
-        suffix+="/"
-
-    # Block special file.
-    elif [[ -b ${list[$1]} ]]; then
-        format+="\\e[${bd:-40;33;01}m"
-
-    # Character special file.
-    elif [[ -c ${list[$1]} ]]; then
-        format+="\\e[${cd:-40;33;01}m"
-
-    # Executable file.
-    elif [[ -x ${list[$1]} ]]; then
-        format+="\\e[${ex:-01;32}m"
-
-    # Symbolic Link (broken).
-    elif [[ -h ${list[$1]} && ! -e ${list[$1]} ]]; then
-        format+="\\e[${mi:-01;31;7}m"
-
-    # Symbolic Link.
-    elif [[ -h ${list[$1]} ]]; then
-        format+="\\e[${ln:-01;36}m"
-
-    # Fifo file.
-    elif [[ -p ${list[$1]} ]]; then
-        format+="\\e[${pi:-40;33}m"
-
-    # Socket file.
-    elif [[ -S ${list[$1]} ]]; then
-        format+="\\e[${so:-01;35}m"
-
-    # Color files that end in a pattern as defined in LS_COLORS.
-    # 'BASH_REMATCH' is an array that stores each REGEX match.
-    elif [[ $FFF_LS_COLORS == 1 &&
-            $ls_patterns &&
-            $file_name =~ ($ls_patterns)$ ]]; then
-        match=${BASH_REMATCH[0]}
-        file_ext=ls_${match//[^a-zA-Z0-9=\\;]/_}
-        format+="\\e[${!file_ext:-${fi:-37}}m"
-
-    # Color files based on file extension and LS_COLORS.
-    # Check if file extension adheres to POSIX naming
-    # standard before checking if it's a variable.
-    elif [[ $FFF_LS_COLORS == 1 &&
-            $file_ext != "$file_name" &&
-            $file_ext =~ ^[a-zA-Z0-9_]*$ ]]; then
-        file_ext=ls_${file_ext}
-        format+="\\e[${!file_ext:-${fi:-37}}m"
-
-    else
-        format+="\\e[${fi:-37}m"
-    fi
-
-    # If the list item is under the cursor.
-    (($1 == scroll)) &&
-        format+="\\e[1;3${FFF_COL4:-6};7m"
-
-    # If the list item is marked for operation.
-    [[ ${marked_files[$1]} == "${list[$1]:-null}" ]] && {
-        format+="\\e[3${FFF_COL3:-1}m${mark_pre}"
-        suffix+="${mark_post}"
-    }
-
-    # Escape the directory string.
-    # Remove all non-printable characters.
-    file_name=${file_name//[^[:print:]]/^[}
-
-    printf '\r%b%s\e[m\r' \
-        "${file_pre}${format}" \
-        "${file_name}${suffix}${file_post}"
+	# Make sure we have up-to-date menu length before drawing
+	current_menu_length="${#FIRMWARE_MENU[@]}"
 }
 
 draw_dir() {
@@ -349,7 +259,7 @@ draw_dir() {
     fi
 
     # Reset cursor position.
-    printf '\e[H'
+    printf "TEXT_START"
 
     for ((i=scroll_start;i<scroll_end;i++)); {
         # Don't print one too many newlines.
@@ -383,13 +293,13 @@ MAIN_MENU_doctor() {
 		DOCTOR_MENU_CONTENT+="Udev file: "
 		QMK_UDEV_FILE="50-qmk.rules"
 		if [ -s "/usr/lib/udev/rules.d/$QMK_UDEV_FILE" ]; then
-			DOCTOR_MENU_CONTENT+="/usr/lib/udev/rules.d/$QMK_UDEV_FILE"
+			DOCTOR_MENU_CONTENT+="/usr/lib/udev/rules.d/$QMK_UDEV_FILE\n"
 		elif [ -s "/usr/local/lib/udev/rules.d/$QMK_UDEV_FILE" ]; then
-			DOCTOR_MENU_CONTENT+="/usr/local/lib/udev/rules.d/$QMK_UDEV_FILE"
+			DOCTOR_MENU_CONTENT+="/usr/local/lib/udev/rules.d/$QMK_UDEV_FILE\n"
 		elif [ -s "/run/udev/rules.d/$QMK_UDEV_FILE" ]; then
-			DOCTOR_MENU_CONTENT+="/run/udev/rules.d/$QMK_UDEV_FILE"
+			DOCTOR_MENU_CONTENT+="/run/udev/rules.d/$QMK_UDEV_FILE\n"
 		elif [ -s "/etc/udev/rules.d/$QMK_UDEV_FILE" ]; then
-			DOCTOR_MENU_CONTENT+="/etc/udev/rules.d/$QMK_UDEV_FILE"
+			DOCTOR_MENU_CONTENT+="/etc/udev/rules.d/$QMK_UDEV_FILE\n"
 		else
 			DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing without root will likely fail.\n"
 		fi
@@ -429,6 +339,11 @@ MAIN_MENU_doctor() {
 FLASH_MENU_firmware() {
 	push "menu_stack" "firmware"
 	# local file=""
+	read_dir
+
+	#draw_dir
+	#read
+
 	redraw
 }
 MAIN_MENU_flash() {
@@ -479,6 +394,19 @@ key() {
 			if [[ "$selected_menu" == "back" || "$selected_menu" == "quit" ]]; then
 				# These are special, non menu-specific commands
 				eval "${selected_menu}"
+			elif [[ "$current_menu_name" == "FIRMWARE_MENU" ]]; then
+				# In the firmware selector menu
+				#
+				# if it's a dir, 'cd' into it
+				if [[ -d "$selected_menu" ]]; then
+					cd "$selected_menu"
+					read_dir
+					# return
+				## if a file, select it for flashing
+				elif [[ -f "$selected_menu" ]]; then
+					echo
+					#TODO: do the flashing
+				fi
 			else
 				eval "${current_menu_name}_${selected_menu}"
 			fi
