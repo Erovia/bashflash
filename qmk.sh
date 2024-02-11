@@ -11,6 +11,7 @@ OS="$(uname -s)"
 DFU_UTIL=$(command -v dfu-util 2>&1)
 DFU_PROGRAMMER=$(command -v dfu-programmer 2>&1)
 AVRDUDE=$(command -v avrdudex 2>&1)
+FIRMWARE=""
 #################################################
 #
 #    COLOURS
@@ -57,7 +58,6 @@ menu_housekeeping() {
 	current_menu_length="${#current_menu[@]}"
 	current_menu_content_name="${current_menu_name}_CONTENT"
 	declare -ng current_menu_content="$current_menu_content_name"
-	# echo "$(date +%Y-%m-%d/%H:%M:%S) - $current_menu_name: ${current_menu[@]}: ${#current_menu[@]}" >> qmk.log
 }
 push() { local -n "stack=$1"; shift; stack+=("$@"); menu_housekeeping; }
 pop() { peek "$1"; unset "$1[-1]"; menu_housekeeping; }
@@ -102,7 +102,7 @@ get_term_size() {
 	# This can't be done reliably across all bash versions in pure bash.
 	read -r LINES COLUMNS < <(stty size)
 
-	((max_items=LINES-1))
+	((max_items=LINES-6))
 }
 
 clear_screen() {
@@ -178,11 +178,13 @@ redraw() {
 
 draw_menu() {
 	if [[ -n "${current_menu[@]}" ]]; then
-		for ((i = 0; i < $current_menu_length; i++)); do
+		local i=0
+		for item in "${current_menu[@]:0:max_items}"; do
 			if [[ "$i" -eq "$active_item" ]]; then
 				printf "${RED}>${DEFAULT} "
 			fi
-			printf "${current_menu[$i]}\n"
+			printf "${item}\n"
+			((i++))
 		done
 	fi
 }
@@ -329,7 +331,7 @@ MAIN_MENU_doctor() {
 		DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing AVR-based boards might not be possible.\n"
 	fi
 
-	redraw
+	# redraw
 }
 #################################################
 #
@@ -344,12 +346,24 @@ FLASH_MENU_firmware() {
 	#draw_dir
 	#read
 
-	redraw
+	# redraw
 }
+
+FLASH_MENU_flash() {
+	push "menu_stack" "flashing"
+
+}
+
 MAIN_MENU_flash() {
+	if [[ -n "$FIRMWARE" && "$FLASH_MENU[1]" != "Flash" ]]; then
+		temp=("${FLASH_MENU[@]:1}")
+		FLASH_MENU=("${FLASH_MENU[@]:0:1}")
+		FLASH_MENU[1]="Flash"
+		FLASH_MENU+=($temp)
+	fi
 	push "menu_stack" "flash"
 	# local file=""
-	redraw
+	# redraw
 }
 #################################################
 #
@@ -397,15 +411,23 @@ key() {
 			elif [[ "$current_menu_name" == "FIRMWARE_MENU" ]]; then
 				# In the firmware selector menu
 				#
+				# here we're using the original value,
+				# as the dir/file names might contain uppercase letters
+				#
 				# if it's a dir, 'cd' into it
-				if [[ -d "$selected_menu" ]]; then
-					cd "$selected_menu"
+				if [[ -d "${current_menu[active_item]}" ]]; then
+					cd "${current_menu[active_item]}"
 					read_dir
 					# return
 				## if a file, select it for flashing
-				elif [[ -f "$selected_menu" ]]; then
-					echo
-					#TODO: do the flashing
+				elif [[ -f "${current_menu[active_item]}" ]]; then
+					FIRMWARE="${PWD}/${current_menu[active_item]}"
+					# For visual feedback,
+					# make sure the menu entry only contains the first word,
+					# and add the full path of the selected firmware
+					FLASH_MENU[0]="${FLASH_MENU[0]%%' '*}"
+					FLASH_MENU[0]+=" : $FIRMWARE"
+					back
 				fi
 			else
 				eval "${current_menu_name}_${selected_menu}"
@@ -422,9 +444,11 @@ key() {
 			;;
 	esac
 	# active_menu_length=$((current_menu_length + 1))
-	# active_item=$(( ((active_item % active_menu_length) + active_menu_length) % active_menu_length))
-	active_item=$(( ((active_item % current_menu_length) + current_menu_length) % current_menu_length))
-	redraw 
+	# active_item=$(( ((active_item % active_menuo_length) + active_menu_length) % active_menu_length))
+	local modulo
+	[[ "$current_menu_length" -gt "$max_items" ]] && modulo="$max_items" || modulo="$current_menu_length"
+	active_item=$(( ((active_item % modulo) + modulo) % modulo))
+	redraw
 }
 #################################################
 
