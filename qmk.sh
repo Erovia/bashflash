@@ -28,6 +28,7 @@ BORDER="\e[30;41m"
 FIRST_LINE="\e[H"
 #LAST_LINE="\e
 TEXT_START="\e[3H"
+scroll_position=0
 #################################################
 #
 #    MENUS
@@ -179,7 +180,16 @@ redraw() {
 draw_menu() {
 	if [[ -n "${current_menu[@]}" ]]; then
 		local i=0
-		for item in "${current_menu[@]:0:max_items}"; do
+		echo "active_item: $active_item" &>2
+		echo "scroll_position: $scroll_position" &>2
+		if (( scroll_position+max_items < current_menu_length && active_item == max_items-1 )); then
+			(( scroll_position++ ))
+			(( active_item-- ))
+		elif (( scroll_position > 0 && active_item < scroll_position )); then
+			(( scroll_position--))
+			(( active_item++))
+		fi
+		for item in "${current_menu[@]:scroll_position:max_items}"; do
 			if [[ "$i" -eq "$active_item" ]]; then
 				printf "${RED}>${DEFAULT} "
 			fi
