@@ -185,7 +185,7 @@ draw_menu() {
 		if (( scroll_position+max_items < current_menu_length && active_item == max_items-1 )); then
 			(( scroll_position++ ))
 			(( active_item-- ))
-		elif (( scroll_position > 0 && active_item < scroll_position )); then
+		elif (( scroll_position > 0 && active_item == 0 )); then
 			(( scroll_position--))
 			(( active_item++))
 		fi
