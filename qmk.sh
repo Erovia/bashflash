@@ -207,7 +207,7 @@ read_dir() {
 	local dirs
 	local files
 
-	# If '$FIRMWARE_MENU' already has items, reset it to the 2 original entries
+	# If '$FIRMWARE_MENU' has more than 2 entries, reset it to the 2 original entries
 	[[ "${#FIRMWARE_MENU[@]}" -gt "2" ]]; FIRMWARE_MENU=("${FIRMWARE_MENU[@]:0:2}")
 
 	# If '$PWD' is '/', unset it to avoid '//'
@@ -389,6 +389,23 @@ back() {
 	CONTENT=""
 }
 
+menu_scrolling() {
+	# If 'active_item' is negative, top->bottom looping will happen
+	# and we need to scroll over to the end of the list
+	if [[ "$active_item" -lt 0 && "$current_menu_length" -gt "$max_items" ]]; then
+		scroll_position=$((current_menu_length - max_items))
+	# If it's equal to 'max_items', bottom->top looping will happen
+	# and we need to loop over to the beginning of the list
+	elif [[ "$active_item" -eq "$max_items" && "$current_menu_length" -gt "$max_items" ]]; then
+		scroll_position=0
+	fi
+
+	# Handle looping over in the menu
+	local modulo
+	[[ "$current_menu_length" -gt "$max_items" ]] && modulo="$max_items" || modulo="$current_menu_length"
+	active_item=$(( ((active_item % modulo) + modulo) % modulo))
+}
+
 key() {
 	# Handle special key presses.
 	[[ $1 == $'\e' ]] && {
@@ -407,14 +424,18 @@ key() {
 		# Go up
 		"[A"|"0A"|"k")
 			active_item=$((active_item - 1))
+			menu_scrolling
 			;;
 		# Go down
 		"[B"|"0B"|"j")
 			active_item=$((active_item + 1))
+			menu_scrolling
 			;;
 		# ENTER
 		"")
-			local selected_menu="$(echo ${current_menu[active_item]} | tr '[:upper:]' '[:lower:]')"
+			ptr=$(( scroll_position+active_item ))
+			local selected_menu="$(echo ${current_menu[ptr]} | tr '[:upper:]' '[:lower:]')"
+			#local selected_menu="${current_menu[active_item],,}"
 			if [[ "$selected_menu" == "back" || "$selected_menu" == "quit" ]]; then
 				# These are special, non menu-specific commands
 				eval "${selected_menu}"
@@ -425,13 +446,15 @@ key() {
 				# as the dir/file names might contain uppercase letters
 				#
 				# if it's a dir, 'cd' into it
-				if [[ -d "${current_menu[active_item]}" ]]; then
-					cd "${current_menu[active_item]}"
+				if [[ -d "${current_menu[ptr]}" ]]; then
+					cd "${current_menu[ptr]}"
 					read_dir
+					active_item=0
+					scroll_position=0
 					# return
 				## if a file, select it for flashing
-				elif [[ -f "${current_menu[active_item]}" ]]; then
-					FIRMWARE="${PWD}/${current_menu[active_item]}"
+				elif [[ -f "${current_menu[ptr]}" ]]; then
+					FIRMWARE="${PWD}/${current_menu[ptr]}"
 					# For visual feedback,
 					# make sure the menu entry only contains the first word,
 					# and add the full path of the selected firmware
@@ -455,9 +478,13 @@ key() {
 	esac
 	# active_menu_length=$((current_menu_length + 1))
 	# active_item=$(( ((active_item % active_menuo_length) + active_menu_length) % active_menu_length))
-	local modulo
-	[[ "$current_menu_length" -gt "$max_items" ]] && modulo="$max_items" || modulo="$current_menu_length"
-	active_item=$(( ((active_item % modulo) + modulo) % modulo))
+	#echo "scroll_position: $scroll_position" &>2
+	#echo "active_item: $active_item" &>2
+	#echo "current_menu_length-max_items: $(( max_items ))" &>2
+	#if $(( scroll_position == 0 && active_item >= max_items )); then
+	#	scroll_position=$(( current_menu_length - max_items ))
+	#elif $(( active_item ==
+	#fi
 	redraw
 }
 #################################################
