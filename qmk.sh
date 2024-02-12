@@ -234,59 +234,6 @@ read_dir() {
 	# Make sure we have up-to-date menu length before drawing
 	current_menu_length="${#FIRMWARE_MENU[@]}"
 }
-
-draw_dir() {
-    # Print the max directory items that fit in the scroll area.
-    local scroll_start=$scroll
-    local scroll_new_pos
-    local scroll_end
-
-    # When going up the directory tree, place the cursor on the position
-    # of the previous directory.
-    ((find_previous == 1)) && {
-        ((scroll_start=previous_index))
-        ((scroll=scroll_start))
-
-        # Clear the directory history. We're here now.
-        find_previous=
-    }
-
-    # If current dir is near the top of the list, keep scroll position.
-    if ((list_total < max_items || scroll < max_items/2)); then
-        ((scroll_start=0))
-        ((scroll_end=max_items))
-        ((scroll_new_pos=scroll+1))
-
-    # If current dir is near the end of the list, keep scroll position.
-    elif ((list_total - scroll < max_items/2)); then
-        ((scroll_start=list_total-max_items+1))
-        ((scroll_new_pos=max_items-(list_total-scroll)))
-        ((scroll_end=list_total+1))
-
-    # If current dir is somewhere in the middle, center scroll position.
-    else
-        ((scroll_start=scroll-max_items/2))
-        ((scroll_end=scroll_start+max_items))
-        ((scroll_new_pos=max_items/2+1))
-    fi
-
-    # Reset cursor position.
-    printf "TEXT_START"
-
-    for ((i=scroll_start;i<scroll_end;i++)); {
-        # Don't print one too many newlines.
-        ((i > scroll_start)) &&
-            printf '\n'
-
-        print_line "$i"
-    }
-
-    # Move the cursor to its new position if it changed.
-    # If the variable 'scroll_new_pos' is empty, the cursor
-    # is moved to line '0'.
-    printf '\e[%sH' "$scroll_new_pos"
-    ((y=scroll_new_pos))
-}
 #################################################
 #
 #    Doctor
