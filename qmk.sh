@@ -334,6 +334,7 @@ quit() {
 back() {
 	pop "menu_stack"
 	CONTENT=""
+	scroll_position=0
 }
 
 menu_scrolling() {
