@@ -11,6 +11,16 @@ OS="$(uname -s)"
 DFU_UTIL=$(command -v dfu-util 2>&1)
 DFU_PROGRAMMER=$(command -v dfu-programmer 2>&1)
 AVRDUDE=$(command -v avrdudex 2>&1)
+
+check_dfu_util_version() {
+	echo $("$DFU_UTIL" -V | awk '/^dfu-util/ {print $2}')
+}
+check_dfu_programmer_version() {
+	echo $("$DFU_PROGRAMMER" --version 2>&1 | awk '/^dfu-programmer/ {print $2}')
+}
+check_avrdude_version() {
+	echo $("$AVRDUDE" 2>&1 | awk '/^avrdude version/ {print $3}' | tr -d ',')
+}
 #################################################
 #
 #    BOOTLOADERS
@@ -283,21 +293,21 @@ MAIN_MENU_doctor() {
 	DOCTOR_MENU_CONTENT+="\n${BORDER}Tools:${DEFAULT}\n"
 	DOCTOR_MENU_CONTENT+="Dfu-util version: "
 	if [[ -x "$DFU_UTIL" ]]; then
-		DOCTOR_MENU_CONTENT+=$("$DFU_UTIL" -V | awk '/^dfu-util/ {print $2}')
+		DOCTOR_MENU_CONTENT+=$(check_dfu_util_version)
 		DOCTOR_MENU_CONTENT+="\n"
 	else
 		DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing ARM-based boards might not be possible.\n"
 	fi
 	DOCTOR_MENU_CONTENT+="Avrdude version: "
 	if [[ -x "$AVRDUDE" ]]; then
-		DOCTOR_MENU_CONTENT+=$("$AVRDUDE" 2>&1 | awk '/^avrdude version/ {print $3}' | tr -d ',')
+		DOCTOR_MENU_CONTENT+=$(check_avrdude_version)
 		DOCTOR_MENU_CONTENT+="\n"
 	else
 		DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing ProMicro-based boards might not be possible.\n"
 	fi
 	DOCTOR_MENU_CONTENT+="Dfu-programmer version: "
 	if [[ -x "$DFU_PROGRAMMER" ]]; then
-		DOCTOR_MENU_CONTENT+=$("$DFU_PROGRAMMER" --version 2>&1 | awk '/^dfu-programmer/ {print $2}')
+		DOCTOR_MENU_CONTENT+=$(check_dfu_programmer_version)
 		DOCTOR_MENU_CONTENT+="\n"
 		#DOCTOR_MENU_CONTENT+=$("$DFU_PROGRAMMER" -V 2>&1 | awk '/^dfu-programmer/ {print $2}'\n)
 	else
@@ -323,8 +333,12 @@ FLASH_MENU_firmware() {
 }
 
 find_bootloader() {
+	# To avoid running forever, only look for bootloaders for ~10min
+	local TIMEOUT=600
+	local counter=0
+
 	printf "Waiting for bootloader"
-	while [[ -z "$bootloader" ]] ; do
+	while [[ -z "$bootloader" && "$counter" -lt "$TIMEOUT" ]] ; do
 		printf "."
 		if [ "${OS,,}"  == "linux" ]; then
 			for bl in "${!BOOTLOADERS[@]}"; do
@@ -337,14 +351,24 @@ find_bootloader() {
 			done
 			sleep 1
 		fi
+	(( counter++ ))
 	done
-	printf "\n"
+	[[ -n "$bootloader" ]] && printf " Found it!\n\n" || printf " Timed out!\n"
 }
 
 flash_atmel_dfu() {
-	$DFU_PROGRAMMER "$mcu" erase --force 2>&1
-	$DFU_PROGRAMMER "$mcu" flash --force "$firmware" 2>&1
-	$DFU_PROGRAMMER "$mcu" reset 2>&1
+	IFS='.' read -r maj min bug < <(check_dfu_programmer_version)
+	if [[ "$maj" -eq "0" && "$min" -lt "7" ]]; then
+		# Ubuntu and Debian still ships 0.6.1
+		force=""
+	else
+		# Only version 0.7.0 and higher supports '--force'
+		force="--force"
+	fi
+	"$DFU_PROGRAMMER" "$mcu" erase "$force" 2>&1
+	"$DFU_PROGRAMMER" "$mcu" flash "$force" "$firmware" 2>&1
+	"$DFU_PROGRAMMER" "$mcu" reset 2>&1
+	read
 }
 
 FLASH_MENU_flash() {
