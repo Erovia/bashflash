@@ -11,7 +11,23 @@ OS="$(uname -s)"
 DFU_UTIL=$(command -v dfu-util 2>&1)
 DFU_PROGRAMMER=$(command -v dfu-programmer 2>&1)
 AVRDUDE=$(command -v avrdudex 2>&1)
-FIRMWARE=""
+#################################################
+#
+#    BOOTLOADERS
+#
+#################################################
+declare -A BOOTLOADERS
+BOOTLOADERS["03eb:2fef"]="atmel-dfu atmega16u2"
+BOOTLOADERS["03eb:2ff0"]="atmel-dfu atmega32u2"
+BOOTLOADERS["03eb:2ff3"]="atmel-dfu atmega16u4"
+BOOTLOADERS["03eb:2ff4"]="atmel-dfu atmega32u4"
+BOOTLOADERS["03eb:2ff9"]="atmel-dfu at90usb64"
+BOOTLOADERS["03eb:2ffa"]="atmel-dfu at90usb162"
+BOOTLOADERS["03eb:2ffb"]="atmel-dfu at90usb128"
+
+bootloader=""
+mcu=""
+firmware=""
 #################################################
 #
 #    COLOURS
@@ -174,14 +190,14 @@ redraw() {
 	if [[ -n "$current_menu_content" ]]; then
 		printf "$current_menu_content\n\n"
 	fi
-	draw_menu
+	if [[ -z "$1" ]]; then
+		draw_menu
+	fi
 }
 
 draw_menu() {
 	if [[ -n "${current_menu[@]}" ]]; then
 		local i=0
-		echo "active_item: $active_item" &>2
-		echo "scroll_position: $scroll_position" &>2
 		if (( scroll_position+max_items < current_menu_length && active_item == max_items-1 )); then
 			(( scroll_position++ ))
 			(( active_item-- ))
@@ -306,13 +322,46 @@ FLASH_MENU_firmware() {
 	# redraw
 }
 
+find_bootloader() {
+	printf "Waiting for bootloader"
+	while [[ -z "$bootloader" ]] ; do
+		printf "."
+		if [ "${OS,,}"  == "linux" ]; then
+			for bl in "${!BOOTLOADERS[@]}"; do
+				lsusb | grep -q "$bl" 
+				if [[ "$?" -eq "0" ]]; then
+					read -r bootloader mcu < <(echo "${BOOTLOADERS[$bl]}")
+					# Exit if we've found the bootloader
+					break
+				fi
+			done
+			sleep 1
+		fi
+	done
+	printf "\n"
+}
+
+flash_atmel_dfu() {
+	$DFU_PROGRAMMER "$mcu" erase --force 2>&1
+	$DFU_PROGRAMMER "$mcu" flash --force "$firmware" 2>&1
+	$DFU_PROGRAMMER "$mcu" reset 2>&1
+}
+
 FLASH_MENU_flash() {
 	push "menu_stack" "flashing"
-
+  redraw "nomenu"
+	find_bootloader
+	if [[ "$bootloader" == "atmel-dfu" ]]; then
+		flash_atmel_dfu
+	fi
+	read
+	back
+	bootloader=""
+	mcu=""
 }
 
 MAIN_MENU_flash() {
-	if [[ -n "$FIRMWARE" && "$FLASH_MENU[1]" != "Flash" ]]; then
+	if [[ -n "$firmware" && "$FLASH_MENU[1]" != "Flash" ]]; then
 		temp=("${FLASH_MENU[@]:1}")
 		FLASH_MENU=("${FLASH_MENU[@]:0:1}")
 		FLASH_MENU[1]="Flash"
@@ -402,12 +451,12 @@ key() {
 					# return
 				## if a file, select it for flashing
 				elif [[ -f "${current_menu[ptr]}" ]]; then
-					FIRMWARE="${PWD}/${current_menu[ptr]}"
+					firmware="${PWD}/${current_menu[ptr]}"
 					# For visual feedback,
 					# make sure the menu entry only contains the first word,
 					# and add the full path of the selected firmware
 					FLASH_MENU[0]="${FLASH_MENU[0]%%' '*}"
-					FLASH_MENU[0]+=" : $FIRMWARE"
+					FLASH_MENU[0]+=" : $firmware"
 					back
 				fi
 			else
