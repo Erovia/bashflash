@@ -10,7 +10,7 @@ OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 #################################################
 DFU_UTIL=$(command -v dfu-util 2>&1)
 DFU_PROGRAMMER=$(command -v dfu-programmer 2>&1)
-AVRDUDE=$(command -v avrdudex 2>&1)
+AVRDUDE=$(command -v avrdude 2>&1)
 
 check_dfu_util_version() {
 	echo $("$DFU_UTIL" -V | awk '/^dfu-util/ {print $2}')
@@ -35,6 +35,26 @@ BOOTLOADERS["03eb:2ff9"]="atmel-dfu at90usb64"
 BOOTLOADERS["03eb:2ffa"]="atmel-dfu at90usb162"
 BOOTLOADERS["03eb:2ffb"]="atmel-dfu at90usb128"
 
+# pid.codes shared PID
+BOOTLOADERS["1209:2302"]="caterina atmega32u4" # Keyboardio Atreus 2 Bootloader
+# Spark Fun Electronics
+BOOTLOADERS["1b4f:9203"]="caterina atmega32u4" # Pro Micro 3V3/8MHz
+BOOTLOADERS["1b4f:9205"]="caterina atmega32u4" # Pro Micro 5V/16MHz
+BOOTLOADERS["1b4f:9207"]="caterina atmega32u4" # LilyPad 3V3/8MHz (and some Pro Micro clones)
+# Pololu Electronics
+BOOTLOADERS["1ffb:0101"]="caterina atmega32u4" # A-Star 32U4
+# Arduino SA
+BOOTLOADERS["2341:0036"]="caterina atmega32u4" # Leonardo
+BOOTLOADERS["2341:0037"]="caterina atmega32u4" # Micro
+# Adafruit Industries LLC
+BOOTLOADERS["239a:000c"]="caterina atmega32u4" # Feather 32U4
+BOOTLOADERS["239a:000d"]="caterina atmega32u4" # ItsyBitsy 32U4 3V3/8MHz
+BOOTLOADERS["239a:000e"]="caterina atmega32u4" # ItsyBitsy 32U4 5V/16MHz
+# dog hunter AG
+BOOTLOADERS["2a03:0036"]="caterina atmega32u4" # Leonardo
+BOOTLOADERS["2a03:0037"]="caterina atmega32u4" # Micro
+
+vidpid=""
 bootloader=""
 mcu=""
 firmware=""
@@ -361,6 +381,7 @@ find_bootloader() {
 				lsusb | grep -q "$bl" 
 				if [[ "$?" -eq "0" ]]; then
 					read -r bootloader mcu < <(echo "${BOOTLOADERS[$bl]}")
+					vidpid="$bl"
 					# Exit if we've found the bootloader
 					break
 				fi
@@ -369,10 +390,14 @@ find_bootloader() {
 		fi
 	(( counter++ ))
 	done
-	[[ -n "$bootloader" ]] && printf " Found it!\n\n" || printf " Timed out!\n"
+	[[ -n "$bootloader" ]] && printf " Found it!\n\n" || (printf " Timed out!\n"; back)
 }
 
 flash_atmel_dfu() {
+	if [[ -z "$DFU_PROGRAMMER" ]]; then
+		printf "${RED}ERROR:${DEFAULT} The 'dfu-programmer' command is not available!\n"
+		return
+	fi
 	IFS='.' read -r maj min bug < <(check_dfu_programmer_version)
 	if [[ "$maj" -eq "0" && "$min" -lt "7" ]]; then
 		# Ubuntu and Debian still ships 0.6.1
@@ -384,16 +409,76 @@ flash_atmel_dfu() {
 	"$DFU_PROGRAMMER" "$mcu" erase "$force" 2>&1
 	"$DFU_PROGRAMMER" "$mcu" flash "$force" "$firmware" 2>&1
 	"$DFU_PROGRAMMER" "$mcu" reset 2>&1
-	read
+}
+
+# Find Caterina device by VID:PID and return its tty device
+find_serial_port() {
+	# Exit if no vid:pid was provide
+	[[ "$#" -ne 1 ]] && return
+
+	vendor=${1%:*}
+	product=${1##*:}
+
+	if [[ "$OS" == "linux" ]]; then
+		# Based on https://serverfault.com/a/984649
+
+		sys=/sys/bus/usb/devices
+
+		# Iterate over the dirs in the sysfs
+		for d in "$sys"/*; do
+			path=$d
+			if [[ -f ${path}/idProduct ]]; then
+				prod=$(cat ${path}/idProduct)
+				vend=$(cat ${path}/idVendor)
+
+				# Until we find a device with a matching VID and PID
+				if [[ "$vend" == "$vendor"  && "$prod" == "$product" ]]; then
+					path="${path}:1.0/tty"
+					# Check if the "tty" subdir exists
+					if [[ -d $path ]]; then
+						devname=($(compgen -G "${path}/*"))
+						# For Caterina, only a single dir should exist with the name of the device
+						if [[ "${#devname[@]}" -eq "1" && -d ${devname[0]} ]]; then
+							echo "/dev/$(basename ${devname[0]})"
+							return
+						fi
+					fi
+					# Exit with error if we found a matching device,
+					# but it doesn't look like an expected Caterina device
+					return
+				fi
+			fi
+		done
+	fi
+}
+
+flash_caterina() {
+	if [[ -z "$AVRDUDE" ]]; then
+		printf "${RED}ERROR:${DEFAULT} The 'avrdude' command is not available!\n"
+		return
+	fi
+	port="$(find_serial_port "$vidpid")"
+	if [[ -n "$port" ]]; then
+		flash_arg="flash:w:${firmware}:i"
+		# echo "$AVRDUDE -p atmega32u4 -c avr109 -U f\'flash_arg\' -P $port"
+		$AVRDUDE -p atmega32u4 -c avr109 -U flash:w:${firmware}:i -P $port 2>&1
+	else
+		printf "${RED}ERROR:${DEFAULT} Couldn't identify the device!\n"
+	fi
 }
 
 FLASH_MENU_flash() {
-	push "menu_stack" "flashing"
-  redraw "nomenu"
+	enter_menu "flashing"
+	redraw "nomenu"
 	find_bootloader
 	if [[ "$bootloader" == "atmel-dfu" ]]; then
 		flash_atmel_dfu
+	elif [[ "$bootloader" == "caterina" ]]; then
+		flash_caterina
 	fi
+	# if [[ -n "$bootloader" ]]; then
+	# fi
+	printf "\n\n${RED}>${DEFAULT} Back"
 	read
 	back
 	bootloader=""
