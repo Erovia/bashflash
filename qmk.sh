@@ -2,7 +2,7 @@
 VERSION="0.0.1"
 MAINTAINER="Erovia"
 
-OS="$(uname -s)"
+OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 #################################################
 #
 #    TOOLS
@@ -55,6 +55,7 @@ FIRST_LINE="\e[H"
 #LAST_LINE="\e
 TEXT_START="\e[3H"
 scroll_position=0
+active_item=0
 #################################################
 #
 #    MENUS
@@ -77,18 +78,33 @@ declare -a DOCTOR_MENU
 DOCTOR_MENU[0]="Back"
 DOCTOR_MENU_CONTENT=""
 
+# Stack implementation
+# https://stackoverflow.com/a/61476245
 peek() { local -n "stack=$1"; printf %s\\n "${stack[-1]}"; }
+push() { local -n "stack=$1"; shift; stack+=("$@"); }
+pop() { peek "$1"; unset "$1[-1]"; }
+
 menu_housekeeping() {
-	active_item=0
 	current_menu_name="$(echo $(peek 'menu_stack')_MENU | tr '[:lower:]' '[:upper:]')"
 	declare -ng "current_menu=$current_menu_name"
 	current_menu_length="${#current_menu[@]}"
 	current_menu_content_name="${current_menu_name}_CONTENT"
 	declare -ng current_menu_content="$current_menu_content_name"
 }
-push() { local -n "stack=$1"; shift; stack+=("$@"); menu_housekeeping; }
-pop() { peek "$1"; unset "$1[-1]"; menu_housekeeping; }
-push "menu_stack" "main"
+enter_menu() {
+	push "menu_stack" "$1"
+	push "scroll_stack" "${scroll_position} ${active_item}"
+	scroll_position=0
+	active_item=0
+	menu_housekeeping
+}
+exit_menu() {
+	pop "menu_stack" &>/dev/null
+	read -r scroll_position active_item < <(pop "scroll_stack")
+	menu_housekeeping
+}
+
+enter_menu "main"
 #################################################
 #
 #    TUI stuff
@@ -266,7 +282,7 @@ read_dir() {
 #
 #################################################
 MAIN_MENU_doctor() {
-	push "menu_stack" "doctor"
+	enter_menu "doctor"
 
 	DOCTOR_MENU_CONTENT=""
 	DOCTOR_MENU_CONTENT="${BORDER}Environment:${DEFAULT}\n"
@@ -274,7 +290,7 @@ MAIN_MENU_doctor() {
 	DOCTOR_MENU_CONTENT+="Shell: $SHELL - $BASH_VERSION\n"
 	DOCTOR_MENU_CONTENT+="Terminfo: $TERM\n"
 	DOCTOR_MENU_CONTENT+="Window size: ${COLUMNS}x${LINES}\n"
-	if [ $(echo $OS | tr '[:upper:]' '[:lower:]')  == "linux" ]; then
+	if [ "$OS" == "linux" ]; then
 		DOCTOR_MENU_CONTENT+="Udev file: "
 		QMK_UDEV_FILE="50-qmk.rules"
 		if [ -s "/usr/lib/udev/rules.d/$QMK_UDEV_FILE" ]; then
@@ -322,7 +338,7 @@ MAIN_MENU_doctor() {
 #
 #################################################
 FLASH_MENU_firmware() {
-	push "menu_stack" "firmware"
+	enter_menu "firmware"
 	# local file=""
 	read_dir
 
@@ -340,7 +356,7 @@ find_bootloader() {
 	printf "Waiting for bootloader"
 	while [[ -z "$bootloader" && "$counter" -lt "$TIMEOUT" ]] ; do
 		printf "."
-		if [ "${OS,,}"  == "linux" ]; then
+		if [ "$OS"  == "linux" ]; then
 			for bl in "${!BOOTLOADERS[@]}"; do
 				lsusb | grep -q "$bl" 
 				if [[ "$?" -eq "0" ]]; then
@@ -391,7 +407,7 @@ MAIN_MENU_flash() {
 		FLASH_MENU[1]="Flash"
 		FLASH_MENU+=($temp)
 	fi
-	push "menu_stack" "flash"
+	enter_menu "flash"
 	# local file=""
 	# redraw
 }
@@ -405,7 +421,7 @@ quit() {
 }
 
 back() {
-	pop "menu_stack"
+	exit_menu
 	CONTENT=""
 	scroll_position=0
 }
@@ -470,8 +486,6 @@ key() {
 				if [[ -d "${current_menu[ptr]}" ]]; then
 					cd "${current_menu[ptr]}"
 					read_dir
-					active_item=0
-					scroll_position=0
 					# return
 				## if a file, select it for flashing
 				elif [[ -f "${current_menu[ptr]}" ]]; then
@@ -494,7 +508,7 @@ key() {
 		"q")
 			# quit 0
 			# echo "$(date +%Y-%m-%d/%H:%M:%S) - $current_menu_name" >> qmk.log
-			[[ "$current_menu_name" != "MAIN_MENU" ]] && pop "menu_stack"
+			[[ "$current_menu_name" != "MAIN_MENU" ]] && exit_menu
 			;;
 	esac
 	# active_menu_length=$((current_menu_length + 1))
