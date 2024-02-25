@@ -83,11 +83,11 @@ active_item=0
 #################################################
 declare -a MAIN_MENU
 MAIN_MENU[0]="Flash"
-MAIN_MENU[1]="Doctor"
+MAIN_MENU[1]="Doctor\n"
 MAIN_MENU[2]="Quit"
 MAIN_MENU_CONTENT="Super simple flashing TUI for QMK"
 declare -a FLASH_MENU
-FLASH_MENU[0]="Firmware"
+FLASH_MENU[0]="Firmware\n"
 FLASH_MENU[1]="Back"
 FLASH_MENU_CONTENT="Flashing stuff will go here..."
 declare -a FIRMWARE_MENU
@@ -122,6 +122,11 @@ exit_menu() {
 	pop "menu_stack" &>/dev/null
 	read -r scroll_position active_item < <(pop "scroll_stack")
 	menu_housekeeping
+}
+
+clear_formatting() {
+	# Clear text formatting and newlines
+	echo "$1" | sed 's/\\e\[[0-9;]*m\|\\n//g'
 }
 
 enter_menu "main"
@@ -287,7 +292,7 @@ read_dir() {
 	done
 
 	for dir in "${dirs[@]}"; do
-		FIRMWARE_MENU+=("${dir}/")
+		FIRMWARE_MENU+=("\e[01;34m${dir}/${DEFAULT}")
 	done
 	for file in "${files[@]}"; do
 		FIRMWARE_MENU+=("${file}")
@@ -489,7 +494,7 @@ MAIN_MENU_flash() {
 	if [[ -n "$firmware" && "$FLASH_MENU[1]" != "Flash" ]]; then
 		temp=("${FLASH_MENU[@]:1}")
 		FLASH_MENU=("${FLASH_MENU[@]:0:1}")
-		FLASH_MENU[1]="Flash"
+		FLASH_MENU[1]="${RED}Flash${DEFAULT}"
 		FLASH_MENU+=($temp)
 	fi
 	enter_menu "flash"
@@ -556,34 +561,35 @@ key() {
 		# ENTER
 		"")
 			ptr=$(( scroll_position+active_item ))
-			local selected_menu="$(echo ${current_menu[ptr]} | tr '[:upper:]' '[:lower:]')"
-			#local selected_menu="${current_menu[active_item],,}"
-			if [[ "$selected_menu" == "back" || "$selected_menu" == "quit" ]]; then
+			local selected_menu="$(clear_formatting ${current_menu[ptr]})"
+			local selected_menu_lc="${selected_menu,,}"
+			if [[ "$selected_menu_lc" == "back" || "$selected_menu_lc" == "quit" ]]; then
 				# These are special, non menu-specific commands
-				eval "${selected_menu}"
+				eval "${selected_menu_lc}"
 			elif [[ "$current_menu_name" == "FIRMWARE_MENU" ]]; then
 				# In the firmware selector menu
 				#
-				# here we're using the original value,
-				# as the dir/file names might contain uppercase letters
-				#
 				# if it's a dir, 'cd' into it
-				if [[ -d "${current_menu[ptr]}" ]]; then
-					cd "${current_menu[ptr]}"
+				if [[ -d "$selected_menu" ]]; then
+					cd "$selected_menu"
 					read_dir
 					# return
 				## if a file, select it for flashing
-				elif [[ -f "${current_menu[ptr]}" ]]; then
-					firmware="${PWD}/${current_menu[ptr]}"
+				elif [[ -f "$selected_menu" ]]; then
+					firmware="${PWD}/$selected_menu"
 					# For visual feedback,
 					# make sure the menu entry only contains the first word,
 					# and add the full path of the selected firmware
 					FLASH_MENU[0]="${FLASH_MENU[0]%%' '*}"
+					if [[ "${FLASH_MENU[0]: -2}" == "\n" ]]; then
+						FLASH_MENU[0]="${FLASH_MENU[0]:0:-2}"
+						firmware+="\n"
+					fi
 					FLASH_MENU[0]+=" : $firmware"
 					back
 				fi
 			else
-				eval "${current_menu_name}_${selected_menu}"
+				eval "${current_menu_name}_${selected_menu_lc}"
 			fi
 			#redraw
 			#${MAIN_MENU[active_item],,}
