@@ -54,7 +54,6 @@ BOOTLOADERS["239a:000e"]="caterina atmega32u4" # ItsyBitsy 32U4 5V/16MHz
 BOOTLOADERS["2a03:0036"]="caterina atmega32u4" # Leonardo
 BOOTLOADERS["2a03:0037"]="caterina atmega32u4" # Micro
 
-vidpid=""
 bootloader=""
 mcu=""
 firmware=""
@@ -363,38 +362,76 @@ MAIN_MENU_doctor() {
 #    Flashing
 #
 #################################################
-FLASH_MENU_firmware() {
-	enter_menu "firmware"
-	# local file=""
-	read_dir
+#
+#    Flashing: OS-specific functions
+#
+#################################################
+find_bootloader_linux() {
+	# Based on https://serverfault.com/a/984649
+	vendor=${1%:*}
+	product=${1##*:}
 
-	#draw_dir
-	#read
+	sys=/sys/bus/usb/devices
 
-	# redraw
+	# Iterate over the dirs in the sysfs
+	for d in "$sys"/*; do
+		path="$d"
+		if [[ -f "${path}/idProduct" ]]; then
+			prod=$(cat "${path}/idProduct")
+			vend=$(cat "${path}/idVendor")
+
+			# Until we find a device with a matching VID and PID
+			if [[ "$vend" == "$vendor"  && "$prod" == "$product" ]]; then
+				tty="${path}:1.0/tty"
+				# Check if the "tty" subdir exists
+				if [[ -d "$tty" ]]; then
+					devname=($(compgen -G "${tty}/*"))
+					# For Caterina, only a single dir should exist with the name of the device
+					if [[ "${#devname[@]}" -eq "1" && -d ${devname[0]} ]]; then
+						echo "/dev/$(basename ${devname[0]})"
+						return
+					fi
+				fi
+				# For non-Caterina devices, just return the sysfs path
+				echo "$path"
+				return
+			fi
+		fi
+	done
 }
-
+#################################################
+#
+#    Flashing: Generic functions
+#
+#################################################
 find_bootloader() {
-	# To avoid running forever, only look for bootloaders for ~10min
+	# To avoid running forever, only look for bootloaders for ~5mins
 	local TIMEOUT=600
 	local counter=0
+	local find_bl=""
+
+	if [ "$OS"  == "linux" ]; then
+		find_bl="find_bootloader_linux"
+	fi
 
 	printf "Waiting for bootloader"
 	while [[ -z "$bootloader" && "$counter" -lt "$TIMEOUT" ]] ; do
 		printf "."
-		if [ "$OS"  == "linux" ]; then
-			for bl in "${!BOOTLOADERS[@]}"; do
-				lsusb | grep -q "$bl" 
-				if [[ "$?" -eq "0" ]]; then
-					read -r bootloader mcu < <(echo "${BOOTLOADERS[$bl]}")
-					vidpid="$bl"
-					# Exit if we've found the bootloader
-					break
+		for bl in "${!BOOTLOADERS[@]}"; do
+			rc="$($find_bl $bl)"
+			if [[ -n "$rc" ]]; then
+				read -r bootloader mcu < <(echo "${BOOTLOADERS[$bl]}")
+				if [[ "$bootloader" == "caterina" ]]; then
+					# For Caterina devices, we save the tty device in the mcu variable
+					# (mcu is always atmega32u4 anyway)
+					mcu="$rc"
 				fi
-			done
-			sleep 1
-		fi
-	(( counter++ ))
+				# Exit if we've found the bootloader
+				break
+			fi
+		done
+		sleep 0.5
+		(( counter++ ))
 	done
 	[[ -n "$bootloader" ]] && printf " Found it!\n\n" || (printf " Timed out!\n"; back)
 }
@@ -417,60 +454,27 @@ flash_atmel_dfu() {
 	"$DFU_PROGRAMMER" "$mcu" reset 2>&1
 }
 
-# Find Caterina device by VID:PID and return its tty device
-find_serial_port() {
-	# Exit if no vid:pid was provide
-	[[ "$#" -ne 1 ]] && return
-
-	vendor=${1%:*}
-	product=${1##*:}
-
-	if [[ "$OS" == "linux" ]]; then
-		# Based on https://serverfault.com/a/984649
-
-		sys=/sys/bus/usb/devices
-
-		# Iterate over the dirs in the sysfs
-		for d in "$sys"/*; do
-			path=$d
-			if [[ -f ${path}/idProduct ]]; then
-				prod=$(cat ${path}/idProduct)
-				vend=$(cat ${path}/idVendor)
-
-				# Until we find a device with a matching VID and PID
-				if [[ "$vend" == "$vendor"  && "$prod" == "$product" ]]; then
-					path="${path}:1.0/tty"
-					# Check if the "tty" subdir exists
-					if [[ -d $path ]]; then
-						devname=($(compgen -G "${path}/*"))
-						# For Caterina, only a single dir should exist with the name of the device
-						if [[ "${#devname[@]}" -eq "1" && -d ${devname[0]} ]]; then
-							echo "/dev/$(basename ${devname[0]})"
-							return
-						fi
-					fi
-					# Exit with error if we found a matching device,
-					# but it doesn't look like an expected Caterina device
-					return
-				fi
-			fi
-		done
-	fi
-}
-
 flash_caterina() {
 	if [[ -z "$AVRDUDE" ]]; then
 		printf "${RED}ERROR:${DEFAULT} The 'avrdude' command is not available!\n"
 		return
 	fi
-	port="$(find_serial_port "$vidpid")"
+	local port="$mcu"
 	if [[ -n "$port" ]]; then
 		flash_arg="flash:w:${firmware}:i"
-		# echo "$AVRDUDE -p atmega32u4 -c avr109 -U f\'flash_arg\' -P $port"
-		$AVRDUDE -p atmega32u4 -c avr109 -U flash:w:${firmware}:i -P $port 2>&1
+		$AVRDUDE -p atmega32u4 -c avr109 -U flash:w:"${firmware}":i -P $port 2>&1
 	else
 		printf "${RED}ERROR:${DEFAULT} Couldn't identify the device!\n"
 	fi
+}
+#################################################
+#
+#    Flashing: Menu functions
+#
+#################################################
+FLASH_MENU_firmware() {
+	enter_menu "firmware"
+	read_dir
 }
 
 FLASH_MENU_flash() {
@@ -486,16 +490,16 @@ FLASH_MENU_flash() {
 	# fi
 	printf "\n\n${RED}>${DEFAULT} Back"
 	read
-	back
 	bootloader=""
 	mcu=""
+	back
 }
 
 MAIN_MENU_flash() {
 	if [[ -n "$firmware" && "$FLASH_MENU[1]" != "Flash" ]]; then
 		temp=("${FLASH_MENU[@]:1}")
 		FLASH_MENU=("${FLASH_MENU[@]:0:1}")
-		FLASH_MENU[1]="${RED}Flash${DEFAULT}"
+		FLASH_MENU[1]="${RED}Flash${DEFAULT}\n"
 		FLASH_MENU+=($temp)
 	fi
 	enter_menu "flash"
@@ -584,7 +588,6 @@ key() {
 					FLASH_MENU[0]="${FLASH_MENU[0]%%' '*}"
 					if [[ "${FLASH_MENU[0]: -2}" == "\n" ]]; then
 						FLASH_MENU[0]="${FLASH_MENU[0]:0:-2}"
-						firmware+="\n"
 					fi
 					FLASH_MENU[0]+=" : $firmware"
 					back
