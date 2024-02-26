@@ -66,6 +66,7 @@ firmware=""
 DEFAULT="\e[0m"
 RED="\e[31m"
 BORDER="\e[30;41m"
+BOLD_BLUE="\e[1;34m"
 #################################################
 #
 #    POSITIONS
@@ -292,7 +293,7 @@ read_dir() {
 	done
 
 	for dir in "${dirs[@]}"; do
-		FIRMWARE_MENU+=("\e[01;34m${dir}/${DEFAULT}")
+		FIRMWARE_MENU+=("${BOLD_BLUE}${dir}/${DEFAULT}")
 	done
 	for file in "${files[@]}"; do
 		FIRMWARE_MENU+=("${file}")
