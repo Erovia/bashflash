@@ -577,8 +577,7 @@ FLASH_MENU_flash() {
 	elif [[ "$bootloader" == "wb32-dfu" ]]; then
 		flash_wb32_dfu
 	elif [[ "$bootloader" == "isp" ]]; then
-		echo
-		# flash_isp
+		flash_isp
 	fi
 
 	printf "\n\n${RED}>${DEFAULT} Back"
@@ -590,10 +589,7 @@ FLASH_MENU_flash() {
 }
 
 MAIN_MENU_flash() {
-	[[ -n "$firmware" ]] && FLASH_MENU[2]="${RED}$(clear_formatting ${FLASH_MENU[2]})${DEFAULT}"
 	enter_menu "flash"
-	# local file=""
-	# redraw
 }
 #################################################
 #
@@ -679,6 +675,9 @@ key() {
 					# 	FLASH_MENU[0]="${FLASH_MENU[0]:0:-2}"
 					# fi
 					FLASH_MENU[0]+=" : $firmware"
+					# Change the formatting of the  'Flash' button,
+					# from strikethrough to red
+					FLASH_MENU[2]="${RED}$(clear_formatting ${FLASH_MENU[2]})${DEFAULT}"
 					back
 				fi
 			elif [[ "$current_menu_name" == "MICROCONTROLLER_MENU" ]]; then
