@@ -544,10 +544,23 @@ flash_isp() {
 		printf "${RED}ERROR:${DEFAULT} The microcontroller needs to be selected!\n"
 		return
 	fi
-	if [[ "$details" == "usbasp" ]]; then
-		$AVRDUDE -p "$mcu" -c usbasp -U flash:w:"${firmware}":i -P $details 2>&1
+
+	# Avrdude uses alternative name for some MCUs
+	local _mcu=""
+	if [[ "$mcu" == "atmega32a" ]]; then
+		_mcu="m32"
+	elif [[ "$mcu" == "atmega328" ]]; then
+		_mcu="m328"
+	elif [[ "$mcu" == "atmega328p" ]]; then
+		_mcu="m328p"
 	else
-		$AVRDUDE -p "$mcu" -c usbtiny -U flash:w:"${firmware}":i -P $details 2>&1
+		_mcu="$mcu"
+	fi
+
+	if [[ "$details" == "usbasp" ]]; then
+		$AVRDUDE -p "$_mcu" -c usbasp -U flash:w:"${firmware}":i -P $details 2>&1
+	else
+		$AVRDUDE -p "$_mcu" -c usbtiny -U flash:w:"${firmware}":i -P $details 2>&1
 	fi
 }
 #################################################
