@@ -11,6 +11,7 @@ OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 DFU_UTIL=$(command -v dfu-util 2>&1)
 DFU_PROGRAMMER=$(command -v dfu-programmer 2>&1)
 AVRDUDE=$(command -v avrdude 2>&1)
+WB32_DFU_UPDATER_CLI=$(command -v wb32-dfu-updater_cli 2>&1)
 
 check_dfu_util_version() {
 	echo $("$DFU_UTIL" -V | awk '/^dfu-util/ {print $2}')
@@ -20,6 +21,9 @@ check_dfu_programmer_version() {
 }
 check_avrdude_version() {
 	echo $("$AVRDUDE" 2>&1 | awk '/^avrdude version/ {print $3}' | tr -d ',')
+}
+check_wb32_dfu_updater_cli_version() {
+	echo $("$WB32_DFU_UPDATER_CLI" -V | awk '/^wb32-dfu-updater_cli/ {print $3}')
 }
 #################################################
 #
@@ -54,8 +58,19 @@ BOOTLOADERS["239a:000e"]="caterina atmega32u4" # ItsyBitsy 32U4 5V/16MHz
 BOOTLOADERS["2a03:0036"]="caterina atmega32u4" # Leonardo
 BOOTLOADERS["2a03:0037"]="caterina atmega32u4" # Micro
 
+BOOTLOADERS["1eaf:0003"]="dfu stm32" # STM32duino
+BOOTLOADERS["0483:df11"]="dfu stm32" # STM32 DFU
+BOOTLOADERS["1c11:b007"]="dfu stm32" # kiibohd
+BOOTLOADERS["314b:0106"]="dfu apm32" # APM32 DFU
+BOOTLOADERS["28e9:0189"]="dfu gd32v" # GD32V DFU
+
+BOOTLOADERS["342d:dfa0"]="wb32-dfu wb32" # WB32 DFU
+
+BOOTLOADERS["16c0:05df"]="isp usbasp" # USBasp
+BOOTLOADERS["1782:0c9f"]="isp usbtiny" # USBtinyISP
+
 bootloader=""
-mcu=""
+details=""
 firmware=""
 #################################################
 #
@@ -350,9 +365,15 @@ MAIN_MENU_doctor() {
 	if [[ -x "$DFU_PROGRAMMER" ]]; then
 		DOCTOR_MENU_CONTENT+=$(check_dfu_programmer_version)
 		DOCTOR_MENU_CONTENT+="\n"
-		#DOCTOR_MENU_CONTENT+=$("$DFU_PROGRAMMER" -V 2>&1 | awk '/^dfu-programmer/ {print $2}'\n)
 	else
 		DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing AVR-based boards might not be possible.\n"
+	fi
+	DOCTOR_MENU_CONTENT+="Wb32-dfu-updater_cli version: "
+	if [[ -x "$WB32_DFU_UPDATER_CLI" ]]; then
+		DOCTOR_MENU_CONTENT+=$(check_wb32_dfu_updater_cli_version)
+		DOCTOR_MENU_CONTENT+="\n"
+	else
+		DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing WB32-based boards might not be possible.\n"
 	fi
 
 	# redraw
@@ -420,11 +441,14 @@ find_bootloader() {
 		for bl in "${!BOOTLOADERS[@]}"; do
 			rc="$($find_bl $bl)"
 			if [[ -n "$rc" ]]; then
-				read -r bootloader mcu < <(echo "${BOOTLOADERS[$bl]}")
+				read -r bootloader details < <(echo "${BOOTLOADERS[$bl]}")
 				if [[ "$bootloader" == "caterina" ]]; then
-					# For Caterina devices, we save the tty device in the mcu variable
+					# For Caterina devices, we save the tty device in the details variable
 					# (mcu is always atmega32u4 anyway)
-					mcu="$rc"
+					details="$rc"
+				elif [[ "$bootloader" == "dfu" ]]; then
+					# For non-Atmel DFU devices, we save the vid:pid in the details variable
+					details="$bl"
 				fi
 				# Exit if we've found the bootloader
 				break
@@ -449,9 +473,9 @@ flash_atmel_dfu() {
 		# Only version 0.7.0 and higher supports '--force'
 		force="--force"
 	fi
-	"$DFU_PROGRAMMER" "$mcu" erase "$force" 2>&1
-	"$DFU_PROGRAMMER" "$mcu" flash "$force" "$firmware" 2>&1
-	"$DFU_PROGRAMMER" "$mcu" reset 2>&1
+	"$DFU_PROGRAMMER" "$details" erase "$force" 2>&1
+	"$DFU_PROGRAMMER" "$details" flash "$force" "$firmware" 2>&1
+	"$DFU_PROGRAMMER" "$details" reset 2>&1
 }
 
 flash_caterina() {
@@ -459,12 +483,49 @@ flash_caterina() {
 		printf "${RED}ERROR:${DEFAULT} The 'avrdude' command is not available!\n"
 		return
 	fi
-	local port="$mcu"
-	if [[ -n "$port" ]]; then
-		flash_arg="flash:w:${firmware}:i"
-		$AVRDUDE -p atmega32u4 -c avr109 -U flash:w:"${firmware}":i -P $port 2>&1
+	if [[ -n "$details" ]]; then
+		$AVRDUDE -p atmega32u4 -c avr109 -U flash:w:"${firmware}":i -P $details 2>&1
 	else
 		printf "${RED}ERROR:${DEFAULT} Couldn't identify the device!\n"
+	fi
+}
+
+flash_dfu_util() {
+	if [[ -z "$DFU_UTIL" ]]; then
+		printf "${RED}ERROR:${DEFAULT} The 'dfu-util' command is not available!\n"
+		return
+	fi
+	IFS=':' read -r vid pid < <(echo "$details")
+	if [[ "$vid" == "1eaf" && "$pid" == "0003" ]]; then
+		# STM32duino
+		"$DFU_UTIL" -a 2 -d "$details" -R -D "$firmware" 2>&1
+	elif [[ "$vid" == "1c11" && "$pid" == "b007" ]]; then
+		# kiibohd
+		"$DFU_UTIL" -a 0 -d "$details" -D "$firmware" 2>&1
+	else
+		# STM32, APM32, or GD32V DFU
+		"$DFU_UTIL" -a 0 -d "$details" -s 0x08000000:leave -D "$firmware" 2>&1
+	fi
+}
+
+flash_wb32_dfu() {
+	if [[ -z "$WB32_DFU_UPDATER_CLI" ]]; then
+		printf "${RED}ERROR:${DEFAULT} The 'wb32-dfu-updater_cli' command is not available!\n"
+		return
+	fi
+	"$WB32_DFU_UPDATER_CLI" -t -s 0x08000000 -D "$firmware" 2>&1
+}
+
+flash_isp() {
+	#TODO: MCU selector
+	if [[ -z "$AVRDUDE" ]]; then
+		printf "${RED}ERROR:${DEFAULT} The 'avrdude' command is not available!\n"
+		return
+	fi
+	if [[ "$details" == "usbasp" ]]; then
+		$AVRDUDE -p "$mcu" -c usbasp -U flash:w:"${firmware}":i -P $details 2>&1
+	else
+		$AVRDUDE -p "$mcu" -c usbtiny -U flash:w:"${firmware}":i -P $details 2>&1
 	fi
 }
 #################################################
@@ -485,9 +546,15 @@ FLASH_MENU_flash() {
 		flash_atmel_dfu
 	elif [[ "$bootloader" == "caterina" ]]; then
 		flash_caterina
+	elif [[ "$bootloader" == "dfu" ]]; then
+		flash_dfu_util
+	elif [[ "$bootloader" == "wb32-dfu" ]]; then
+		flash_wb32_dfu
+	elif [[ "$bootloader" == "isp" ]]; then
+		echo
+		# flash_isp
 	fi
-	# if [[ -n "$bootloader" ]]; then
-	# fi
+
 	printf "\n\n${RED}>${DEFAULT} Back"
 	read
 	bootloader=""
