@@ -72,6 +72,7 @@ BOOTLOADERS["1782:0c9f"]="isp usbtiny" # USBtinyISP
 bootloader=""
 details=""
 firmware=""
+mcu=""
 #################################################
 #
 #    COLOURS
@@ -81,6 +82,7 @@ DEFAULT="\e[0m"
 RED="\e[31m"
 BORDER="\e[30;41m"
 BOLD_BLUE="\e[1;34m"
+STRIKETHROUGH="\e[9m"
 #################################################
 #
 #    POSITIONS
@@ -102,13 +104,30 @@ MAIN_MENU[1]="Doctor\n"
 MAIN_MENU[2]="Quit"
 MAIN_MENU_CONTENT="Super simple flashing TUI for QMK"
 declare -a FLASH_MENU
-FLASH_MENU[0]="Firmware\n"
-FLASH_MENU[1]="Back"
-FLASH_MENU_CONTENT="Flashing stuff will go here..."
+FLASH_MENU[0]="Firmware"
+FLASH_MENU[1]="Microcontroller"
+FLASH_MENU[2]="${STRIKETHROUGH}Flash${DEFAULT}"
+FLASH_MENU[3]="Back"
+FLASH_MENU_CONTENT="Select the firmware you'd like to flash.\nSelecting an microcontroller is only required for ISP and HID bootloaders."
 declare -a FIRMWARE_MENU
 FIRMWARE_MENU[0]="Back"
 FIRMWARE_MENU[1]=".."
 FIRMWARE_MENU_CONTENT="Select the firmware you'd like to flash:"
+declare -a MICROCONTROLLER_MENU
+MICROCONTROLLER_MENU[0]="atmega32a"
+MICROCONTROLLER_MENU[1]="atmega328"
+MICROCONTROLLER_MENU[2]="atmega328p"
+MICROCONTROLLER_MENU[3]="atmega16u2"
+MICROCONTROLLER_MENU[4]="atmega32u2"
+MICROCONTROLLER_MENU[5]="atmega16u4"
+MICROCONTROLLER_MENU[6]="atmega32u4"
+MICROCONTROLLER_MENU[7]="at90usb162"
+MICROCONTROLLER_MENU[8]="at90usb646"
+MICROCONTROLLER_MENU[9]="at90usb647"
+MICROCONTROLLER_MENU[10]="at90usb1286"
+MICROCONTROLLER_MENU[11]="at90usb1287\n"
+MICROCONTROLLER_MENU[12]="Back"
+MICROCONTROLLER_MENU_CONTENT="Only required for ISP and HID bootloaders!"
 declare -a DOCTOR_MENU
 DOCTOR_MENU[0]="Back"
 DOCTOR_MENU_CONTENT=""
@@ -517,9 +536,12 @@ flash_wb32_dfu() {
 }
 
 flash_isp() {
-	#TODO: MCU selector
 	if [[ -z "$AVRDUDE" ]]; then
 		printf "${RED}ERROR:${DEFAULT} The 'avrdude' command is not available!\n"
+		return
+	fi
+	if [[ -z "$mcu" ]]; then
+		printf "${RED}ERROR:${DEFAULT} The microcontroller needs to be selected!\n"
 		return
 	fi
 	if [[ "$details" == "usbasp" ]]; then
@@ -536,6 +558,10 @@ flash_isp() {
 FLASH_MENU_firmware() {
 	enter_menu "firmware"
 	read_dir
+}
+
+FLASH_MENU_microcontroller() {
+	enter_menu "microcontroller"
 }
 
 FLASH_MENU_flash() {
@@ -558,17 +584,13 @@ FLASH_MENU_flash() {
 	printf "\n\n${RED}>${DEFAULT} Back"
 	read
 	bootloader=""
+	details=""
 	mcu=""
 	back
 }
 
 MAIN_MENU_flash() {
-	if [[ -n "$firmware" && "$FLASH_MENU[1]" != "Flash" ]]; then
-		temp=("${FLASH_MENU[@]:1}")
-		FLASH_MENU=("${FLASH_MENU[@]:0:1}")
-		FLASH_MENU[1]="${RED}Flash${DEFAULT}\n"
-		FLASH_MENU+=($temp)
-	fi
+	[[ -n "$firmware" ]] && FLASH_MENU[2]="${RED}$(clear_formatting ${FLASH_MENU[2]})${DEFAULT}"
 	enter_menu "flash"
 	# local file=""
 	# redraw
@@ -653,12 +675,17 @@ key() {
 					# make sure the menu entry only contains the first word,
 					# and add the full path of the selected firmware
 					FLASH_MENU[0]="${FLASH_MENU[0]%%' '*}"
-					if [[ "${FLASH_MENU[0]: -2}" == "\n" ]]; then
-						FLASH_MENU[0]="${FLASH_MENU[0]:0:-2}"
-					fi
+					# if [[ "${FLASH_MENU[0]: -2}" == "\n" ]]; then
+					# 	FLASH_MENU[0]="${FLASH_MENU[0]:0:-2}"
+					# fi
 					FLASH_MENU[0]+=" : $firmware"
 					back
 				fi
+			elif [[ "$current_menu_name" == "MICROCONTROLLER_MENU" ]]; then
+				mcu="$selected_menu"
+				FLASH_MENU[1]="${FLASH_MENU[1]%%' '*}"
+				FLASH_MENU[1]+=" : $mcu"
+				back
 			else
 				eval "${current_menu_name}_${selected_menu_lc}"
 			fi
@@ -673,15 +700,6 @@ key() {
 			[[ "$current_menu_name" != "MAIN_MENU" ]] && exit_menu
 			;;
 	esac
-	# active_menu_length=$((current_menu_length + 1))
-	# active_item=$(( ((active_item % active_menuo_length) + active_menu_length) % active_menu_length))
-	#echo "scroll_position: $scroll_position" &>2
-	#echo "active_item: $active_item" &>2
-	#echo "current_menu_length-max_items: $(( max_items ))" &>2
-	#if $(( scroll_position == 0 && active_item >= max_items )); then
-	#	scroll_position=$(( current_menu_length - max_items ))
-	#elif $(( active_item ==
-	#fi
 	redraw
 }
 #################################################
