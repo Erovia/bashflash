@@ -2,6 +2,16 @@
 VERSION="0.0.1"
 MAINTAINER="Erovia"
 
+#################################################
+#
+#    SANTIY CHECK
+#
+#################################################
+#if [[ "${BASH_VERSINFO[0]}" -lt "4" ]]; then
+#	echo "Please use a newer Bash version!"
+#	exit 1
+#fi
+#################################################
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 #################################################
 #
@@ -160,7 +170,7 @@ exit_menu() {
 
 clear_formatting() {
 	# Clear text formatting and newlines
-	echo "$1" | sed 's/\\e\[[0-9;]*m\|\\n//g'
+	echo "$1" | sed -E 's/\\e\[[0-9;]*m|\\n//g'
 }
 
 enter_menu "main"
@@ -439,6 +449,14 @@ find_bootloader_linux() {
 		fi
 	done
 }
+
+find_bootloader_mac() {
+	local usb_devices=$(system_profiler SPUSBDataType 2>/dev/null)
+	local vendor=${1%:*}
+	local product=${1##*:}
+
+	[[ "$usb_devices" == *"$vendor"* && "$usb_devices" == *"$found"* ]] && echo "found" || return 1
+}
 #################################################
 #
 #    Flashing: Generic functions
@@ -450,8 +468,10 @@ find_bootloader() {
 	local counter=0
 	local find_bl=""
 
-	if [ "$OS"  == "linux" ]; then
+	if [[ "$OS"  == "linux" ]]; then
 		find_bl="find_bootloader_linux"
+	elif [[ "$OS" == "darwin" ]]; then
+		find_bl="find_bootloader_mac"
 	fi
 
 	printf "Waiting for bootloader"
