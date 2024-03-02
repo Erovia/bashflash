@@ -455,7 +455,22 @@ find_bootloader_mac() {
 	local vendor=${1%:*}
 	local product=${1##*:}
 
-	[[ "$usb_devices" == *"$vendor"* && "$usb_devices" == *"$found"* ]] && echo "found" || return 1
+	if [[ "$usb_devices" == *"$vendor"* && "$usb_devices" == *"$found"* ]]; then
+		local bootloader="${BOOTLOADERS[$1]%%' '*}"
+		if [[ "$bootloader" == "caterina" ]]; then
+			serial_ports=( $(compgen -G "/dev/cu.usbmodem*") )
+			num_of_serial_ports="${#serial_ports[@]}"
+			if [[ "$num_of_serial_ports" -eq "0" ]]; then
+				return 1
+			elif [[ "$num_of_serial_ports" -eq "1" ]]; then
+				echo "$serial_ports"
+				return
+			else
+				return 2
+			fi
+		fi
+		return
+	fi
 }
 #################################################
 #
