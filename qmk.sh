@@ -24,6 +24,24 @@ AVRDUDE=$(command -v avrdude 2>&1)
 WB32_DFU_UPDATER_CLI=$(command -v wb32-dfu-updater_cli 2>&1)
 MDLOADER=$(command -v mdloader 2>&1)
 HID_BOOTLOADER_CLI=$(command -v hid_bootloader_cli 2>&1)
+UF2CONV=$(command -v uf2conv.py 2>&1 || command -v uf2conv 2>&1)
+
+find_uf2conv() {
+	if [[ -z "$uf2conv" ]]; then
+		local script_dir="$(cd "$(dirname "$0")" && pwd)"
+		local qmk_dir="$HOME/qmk_firmware"
+		# Check in the scripts directory
+		if [[ -x "${script_dir}/uf2conv.py" ]]; then
+			echo "${script_dir}/uf2conv.py"
+		elif [[ -x "${script_dir}/uf2conv" ]]; then
+			echo "${script_dir}/uf2conv"
+		# Check if a QMK_FIRMWARE repo is available
+		elif [[ -x "${qmk_dir}/util/uf2conv.py" ]]; then
+			echo "${qmk_dir}/util/uf2conv.py"
+		fi
+	fi
+}
+[[ -z "$UF2CONV" ]] && UF2CONV="$(find_uf2conv)"
 
 check_dfu_util_version() {
 	echo $("$DFU_UTIL" -V | awk '/^dfu-util/ {print $2}')
@@ -340,7 +358,7 @@ read_dir() {
 			dirs+=($(basename "$item"))
 		else
 			ext="${item##*.}"
-			if [[ "$ext" == "hex" || "$ext" == "bin" ]]; then
+			if [[ "$ext" == "hex" || "$ext" == "bin" || "$ext" == "uf2" ]]; then
 				files+=($(basename "$item"))
 			fi
 		fi
@@ -428,6 +446,13 @@ MAIN_MENU_doctor() {
 		DOCTOR_MENU_CONTENT+="\n"
 	else
 		DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing Teensy/QMK HID boards might not be possible.\n"
+	fi
+	DOCTOR_MENU_CONTENT+="Uf2conv: "
+	if [[ -x "$UF2CONV" ]]; then
+		DOCTOR_MENU_CONTENT+="Available"
+		DOCTOR_MENU_CONTENT+="\n"
+	else
+		DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing RP2040 boards might not be possible.\n"
 	fi
 
 	# redraw
@@ -533,6 +558,11 @@ find_bootloader() {
 				break
 			fi
 		done
+		if [[ -z "$bootloader" && -n "$UF2CONV" ]]; then
+			local uf2devs=""
+			mapfile -t uf2devs < <("$UF2CONV" --list 2>/dev/null)
+			[[ "$?" -eq "0" && "${#uf2devs[@]}" -eq "1" ]] && bootloader="uf2"
+		fi
 		sleep 0.5
 		(( counter++ ))
 	done
@@ -644,6 +674,14 @@ flash_hid_bootloader() {
 
 	"$HID_BOOTLOADER_CLI" -mmcu="${mcu}" -w -v "$firmware" 2>&1
 }
+
+flash_uf2() {
+	if [[ -z "$UF2CONV" ]]; then
+		printf "${RED}ERROR:${DEFAULT} The 'uf2conv.py' command is not available!\n"
+		return
+	fi
+	"$UF2CONV" --deploy "$firmware" 2>&1
+}
 #################################################
 #
 #    Flashing: Menu functions
@@ -677,6 +715,8 @@ FLASH_MENU_flash() {
 		flash_mdloader
 	elif [[ "$bootloader" == "hid" ]]; then
 		flash_hid_bootloader
+	elif [[ "$bootloader" == "uf2" ]]; then
+		flash_uf2
 	fi
 
 	printf "\n\n${RED}>${DEFAULT} Back"
