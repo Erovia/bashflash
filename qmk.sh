@@ -22,6 +22,8 @@ DFU_UTIL=$(command -v dfu-util 2>&1)
 DFU_PROGRAMMER=$(command -v dfu-programmer 2>&1)
 AVRDUDE=$(command -v avrdude 2>&1)
 WB32_DFU_UPDATER_CLI=$(command -v wb32-dfu-updater_cli 2>&1)
+MDLOADER=$(command -v mdloader 2>&1)
+HID_BOOTLOADER_CLI=$(command -v hid_bootloader_cli 2>&1)
 
 check_dfu_util_version() {
 	echo $("$DFU_UTIL" -V | awk '/^dfu-util/ {print $2}')
@@ -34,6 +36,9 @@ check_avrdude_version() {
 }
 check_wb32_dfu_updater_cli_version() {
 	echo $("$WB32_DFU_UPDATER_CLI" -V | awk '/^wb32-dfu-updater_cli/ {print $3}')
+}
+check_mdloader_version() {
+	echo $("$MDLOADER" -V | awk '/^Massdrop Loader/ {print $3; exit}')
 }
 #################################################
 #
@@ -79,6 +84,11 @@ BOOTLOADERS["342d:dfa0"]="wb32-dfu wb32" # WB32 DFU
 BOOTLOADERS["16c0:05df"]="isp usbasp" # USBasp
 BOOTLOADERS["1782:0c9f"]="isp usbtiny" # USBtinyISP
 
+BOOTLOADERS["03eb:6124"]="mdboot atsam" # Mass Drop bootloader
+
+BOOTLOADERS["03eb:2067"]="hid qmk" # QMK HID bootloader
+BOOTLOADERS["16c0:0478"]="hid halfkay" # PJRC HalfKay bootloader
+
 bootloader=""
 details=""
 firmware=""
@@ -92,7 +102,8 @@ DEFAULT="\e[0m"
 RED="\e[31m"
 BORDER="\e[30;41m"
 BOLD_BLUE="\e[1;34m"
-STRIKETHROUGH="\e[9m"
+GREY="\e[1;30m"
+STRIKETHROUGH="\e[9m" # Not supported by Mac terminal
 #################################################
 #
 #    POSITIONS
@@ -116,7 +127,7 @@ MAIN_MENU_CONTENT="Super simple flashing TUI for QMK"
 declare -a FLASH_MENU
 FLASH_MENU[0]="Firmware"
 FLASH_MENU[1]="Microcontroller"
-FLASH_MENU[2]="${STRIKETHROUGH}Flash${DEFAULT}"
+FLASH_MENU[2]="${STRIKETHROUGH}${GREY}Flash${DEFAULT}\n"
 FLASH_MENU[3]="Back"
 FLASH_MENU_CONTENT="Select the firmware you'd like to flash.\nSelecting an microcontroller is only required for ISP and HID bootloaders."
 declare -a FIRMWARE_MENU
@@ -404,6 +415,20 @@ MAIN_MENU_doctor() {
 	else
 		DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing WB32-based boards might not be possible.\n"
 	fi
+	DOCTOR_MENU_CONTENT+="Mdloader version: "
+	if [[ -x "$MDLOADER" ]]; then
+		DOCTOR_MENU_CONTENT+=$(check_mdloader_version)
+		DOCTOR_MENU_CONTENT+="\n"
+	else
+		DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing Massdrop boards might not be possible.\n"
+	fi
+	DOCTOR_MENU_CONTENT+="Hid_bootloader_cli: "
+	if [[ -x "$HID_BOOTLOADER_CLI" ]]; then
+		DOCTOR_MENU_CONTENT+="Available"
+		DOCTOR_MENU_CONTENT+="\n"
+	else
+		DOCTOR_MENU_CONTENT+="${RED}Not available${DEFAULT}, flashing Teensy/QMK HID boards might not be possible.\n"
+	fi
 
 	# redraw
 }
@@ -593,10 +618,31 @@ flash_isp() {
 	fi
 
 	if [[ "$details" == "usbasp" ]]; then
-		$AVRDUDE -p "$_mcu" -c usbasp -U flash:w:"${firmware}":i -P $details 2>&1
+		"$AVRDUDE" -p "$_mcu" -c usbasp -U flash:w:"${firmware}":i -P "$details" 2>&1
 	else
-		$AVRDUDE -p "$_mcu" -c usbtiny -U flash:w:"${firmware}":i -P $details 2>&1
+		"$AVRDUDE" -p "$_mcu" -c usbtiny -U flash:w:"${firmware}":i -P "$details" 2>&1
 	fi
+}
+
+flash_mdloader() {
+	if [[ -z "$MDLOADER" ]]; then
+		printf "${RED}ERROR:${DEFAULT} The 'mdloader' command is not available!\n"
+		return
+	fi
+	"$MDLOADER" --first --download "$firmware" --restart 2>&1
+}
+
+flash_hid_bootloader() {
+	if [[ -z "$HID_BOOTLOADER_CLI" ]]; then
+		printf "${RED}ERROR:${DEFAULT} The 'hid_bootloader_cli' command is not available!\n"
+		return
+	fi
+	if [[ -z "$mcu" ]]; then
+		printf "${RED}ERROR:${DEFAULT} The microcontroller needs to be selected!\n"
+		return
+	fi
+
+	"$HID_BOOTLOADER_CLI" -mmcu="${mcu}" -w -v "$firmware" 2>&1
 }
 #################################################
 #
@@ -613,6 +659,7 @@ FLASH_MENU_microcontroller() {
 }
 
 FLASH_MENU_flash() {
+	[[ -z "$firmware" ]] && return
 	enter_menu "flashing"
 	redraw "nomenu"
 	find_bootloader
@@ -626,6 +673,10 @@ FLASH_MENU_flash() {
 		flash_wb32_dfu
 	elif [[ "$bootloader" == "isp" ]]; then
 		flash_isp
+	elif [[ "$bootloader" == "mdboot" ]]; then
+		flash_mdloader
+	elif [[ "$bootloader" == "hid" ]]; then
+		flash_hid_bootloader
 	fi
 
 	printf "\n\n${RED}>${DEFAULT} Back"
@@ -725,7 +776,7 @@ key() {
 					FLASH_MENU[0]+=" : $firmware"
 					# Change the formatting of the  'Flash' button,
 					# from strikethrough to red
-					FLASH_MENU[2]="${RED}$(clear_formatting ${FLASH_MENU[2]})${DEFAULT}"
+					FLASH_MENU[2]="${RED}$(clear_formatting ${FLASH_MENU[2]})${DEFAULT}\n"
 					back
 				fi
 			elif [[ "$current_menu_name" == "MICROCONTROLLER_MENU" ]]; then
