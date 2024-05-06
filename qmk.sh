@@ -4,7 +4,7 @@ MAINTAINER="Erovia"
 
 #################################################
 #
-#    SANTIY CHECK
+#    SANITY CHECK
 #
 #################################################
 #if [[ "${BASH_VERSINFO[0]}" -lt "4" ]]; then
@@ -142,16 +142,19 @@ MAIN_MENU[0]="Flash"
 MAIN_MENU[1]="Doctor\n"
 MAIN_MENU[2]="Quit"
 MAIN_MENU_CONTENT="Super simple flashing TUI for QMK"
+MAIN_MENU_TOOLTIP="Move: UP/DOWN; Enter: ENTER; Back: Q"
 declare -a FLASH_MENU
 FLASH_MENU[0]="Firmware"
 FLASH_MENU[1]="Microcontroller"
 FLASH_MENU[2]="${STRIKETHROUGH}${GREY}Flash${DEFAULT}\n"
 FLASH_MENU[3]="Back"
 FLASH_MENU_CONTENT="Select the firmware you'd like to flash.\nSelecting an microcontroller is only required for ISP and HID bootloaders."
+FLASH_MENU_TOOLTIP="Move: UP/DOWN; Enter: ENTER; Back: Q"
 declare -a FIRMWARE_MENU
 FIRMWARE_MENU[0]="Back"
 FIRMWARE_MENU[1]=".."
 FIRMWARE_MENU_CONTENT="Select the firmware you'd like to flash:"
+FIRMWARE_MENU_TOOLTIP="Move: UP/DOWN; Select: ENTER; Back: Q"
 declare -a MICROCONTROLLER_MENU
 MICROCONTROLLER_MENU[0]="atmega32a"
 MICROCONTROLLER_MENU[1]="atmega328"
@@ -167,9 +170,11 @@ MICROCONTROLLER_MENU[10]="at90usb1286"
 MICROCONTROLLER_MENU[11]="at90usb1287\n"
 MICROCONTROLLER_MENU[12]="Back"
 MICROCONTROLLER_MENU_CONTENT="Only required for ISP and HID bootloaders!"
+MICROCONTROLLER_MENU_TOOLTIP="Move: UP/DOWN; Select: ENTER; Back: Q"
 declare -a DOCTOR_MENU
 DOCTOR_MENU[0]="Back"
 DOCTOR_MENU_CONTENT=""
+DOCTOR_MENU_TOOLTIP="Basic system information"
 
 # Stack implementation
 # https://stackoverflow.com/a/61476245
@@ -183,6 +188,8 @@ menu_housekeeping() {
 	current_menu_length="${#current_menu[@]}"
 	current_menu_content_name="${current_menu_name}_CONTENT"
 	declare -ng current_menu_content="$current_menu_content_name"
+	current_menu_tooltip_name="${current_menu_name}_TOOLTIP"
+	declare -ng current_menu_tooltip="$current_menu_tooltip_name"
 }
 enter_menu() {
 	push "menu_stack" "$1"
@@ -217,8 +224,6 @@ setup_terminal() {
 	# '\e[1;Nr':   Limit scrolling to scrolling area.
 	#              Also sets cursor to (0,0).
 	printf "\e[?1049h\e[?7l\e[?25l\e[2J\e[2;%sr" "$((LINES-1))"
-	# printf '\e[?1049h\e[?7l\e[?25l\e[2J\e[1;%sr\e[2;%ss' "$max_items" "$((COLUMNS-1))"
-	# printf '\e[?1049h\e[?7l\e[?25l\e[2J'
 
 	# Hide echoing of user input
 	stty -echo
@@ -243,6 +248,7 @@ get_term_size() {
 	# This can't be done reliably across all bash versions in pure bash.
 	read -r LINES COLUMNS < <(stty size)
 
+	# Leave some room for the TUI elements
 	((max_items=LINES-6))
 }
 
@@ -251,85 +257,76 @@ clear_screen() {
 }
 
 title_line() {
-	# '\e[%sH':    Move cursor to bottom of the terminal.
-	# '\e[30;41m': Set foreground and background colors.
-	# '%*s':       Insert enough spaces to fill the screen width.
-	#              This sets the background color to the whole line
-	#              and fixes issues in 'screen' where '\e[K' doesn't work.
-	# '\r':        Move cursor back to column 0 (was at EOL due to above).
-	# '\e[m':      Reset text formatting.
-	# '\e[H\e[K':  Clear line below status_line.
-	# '\e8':       Restore cursor position.
-	#              This is more widely supported than '\e[u'.
-	#printf '\e[%sH\e[30;41m%*s\r%s %s%s\e[m\e[%sH\e[K\e8' \
-	printf "${FIRST_LINE}\r${BORDER}%*s\r%s v${VERSION} by ${MAINTAINER}\e[0m" \
+	# '${FIRST_LINE}':    Move cursor to top of the terminal.
+	# '\r':               Make sure cursor is in column 0.
+	# '${BORDER}':        Set border colour.        
+	# '%*s':              Insert enough spaces to fill the screen width. ('$COLUMNS' variable and "")
+	#                     This sets the background color to the whole line
+	#                     and fixes issues in 'screen' where '\e[K' doesn't work.
+	# '\r':               Move cursor back to column 0 (was at EOL due to above).
+	# '%s':               Print program's name.
+	# 'v${VERSION}':      Print program's version.
+	# 'by ${MAINTAINER}': Print program's maintainer.
+	# '%{DEFAULT}':       Reset default colours.
+	printf "${FIRST_LINE}\r${BORDER}%*s\r%s v${VERSION} by ${MAINTAINER}${DEFAULT}" \
 		"$COLUMNS" "" \
 		"qmk.sh"
 }
 
 status_line() {
-	# '\e[%sH':    Move cursor to bottom of the terminal.
-	# '\e[30;41m': Set foreground and background colors.
-	# '%*s':       Insert enough spaces to fill the screen width.
-	#              This sets the background color to the whole line
-	#              and fixes issues in 'screen' where '\e[K' doesn't work.
-	# '\r':        Move cursor back to column 0 (was at EOL due to above).
-	# '\e[m':      Reset text formatting.
-	# '\e[H\e[K':  Clear line below status_line.
-	# '\e8':       Restore cursor position.
-	#              This is more widely supported than '\e[u'.
-	#printf '\e[%sH\e[30;41m%*s\r%s %s%s\e[m\e[%sH\e[K\e8' \
-	# printf '\e[%sH\e[30;41m%*s\r%s\e[%s;%sH%s\e[m' \
+	# '\e[${LINES}H': Move cursor to bottom of the terminal.
+	# '${BORDER}':    Set border colour.        
+	# '%*s':          Insert enough spaces to fill the screen width. ('$COLUMNS' variable and "")
+	#                 This sets the background color to the whole line
+	#                 and fixes issues in 'screen' where '\e[K' doesn't work.
+	# '\r':           Move cursor back to column 0 (was at EOL due to above).
+	# '%s':           Help text.
+	# '\e[%s;%sH' :   Move cursor to the end of the last line, but leave 5 characters to the right. ('$LINES' and '$((COLUMNS-5))' variables)
+	# '%s':           Print the current time. ('$(date +"%H:%M")')
+	# '%{DEFAULT}':   Reset text formatting.
 	printf "\e[${LINES}H${BORDER}%*s\r%s\e[%s;%sH%s${DEFAULT}" \
 		"$COLUMNS" "" \
-		"Move: UP/DOWN; Enter: ENTER; Back: Q" \
-		"$LINES" "$((COLUMNS-${#DEBUG}))" "$DEBUG"
-		#"$LINES" "hello" \
-}
-
-side_lines() {
-	start=2
-	end=$((LINES))
-	for ((line = 2; line < $LINES; line++)); do
-		# \e%sH : Move to the second line
-		# \e[30;40m : Set black fg and red bg
-		# %s : Print a single space
-		# \e[%s;${COLUMNS}H : Move to the last column in the same line
-		# %s : Print a single space
-		printf "\e[%sH\e[30;41m%s\e[%s;${COLUMNS}H%s" \
-			"$line" \
-			" " \
-			"$line" \
-			" "
-	done
+		"$current_menu_tooltip" \
+		"$LINES" "$((COLUMNS-5))" "$(date +"%H:%M")"
 }
 
 redraw() {
+	# The function that (re)draws the screen on every update.
+	# 'clear_screen':         Clear the screen's current content.
+	# 'title_line':           Draw the title line.
+	# 'status_line':          Draw the status line.
+	# 'printf "$TEXT_START': Set the starting position for the cursor.
 	clear_screen
 	title_line
-	#DEBUG="$current_menu_name"
-	#DEBUG="$current_menu_content"
 	status_line
 	printf "$TEXT_START"
+	# If the current menu has content, print it.
 	if [[ -n "$current_menu_content" ]]; then
 		printf "$current_menu_content\n\n"
 	fi
+	# Draw the menu, unless an argument is passed to this function.
 	if [[ -z "$1" ]]; then
 		draw_menu
 	fi
 }
 
 draw_menu() {
+	# The functions that draws the menu.
 	if [[ -n "${current_menu[@]}" ]]; then
 		local i=0
+		# Handlers for when there is more items than fits on one screen.
+		# If the bottom of the screen is reached and there are more items, scroll the screen and move the active selection.
 		if (( scroll_position+max_items < current_menu_length && active_item == max_items-1 )); then
 			(( scroll_position++ ))
 			(( active_item-- ))
+		# If the top of the screen is reached and there are more items, scroll the screen and move the active selection.
 		elif (( scroll_position > 0 && active_item == 0 )); then
 			(( scroll_position--))
 			(( active_item++))
 		fi
+		# Print the visible items on screen.
 		for item in "${current_menu[@]:scroll_position:max_items}"; do
+			# Select the currently active item.
 			if [[ "$i" -eq "$active_item" ]]; then
 				printf "${RED}>${DEFAULT} "
 			fi
@@ -344,6 +341,7 @@ draw_menu() {
 #
 #################################################
 read_dir() {
+	# Function to read the content of directories.
 	local dirs
 	local files
 
@@ -353,20 +351,26 @@ read_dir() {
 	# If '$PWD' is '/', unset it to avoid '//'
 	[[ "$PWD" == "/" ]] && PWD=
 
+	# The part that actually reads the content of the directory
+	# and sorts the dirs and files into their own local variables.
 	for item in "$PWD"/*; do
 		if [[ -d "$item" ]]; then
 			dirs+=($(basename "$item"))
 		else
 			ext="${item##*.}"
+			# We only care about flashable firmware files
 			if [[ "$ext" == "hex" || "$ext" == "bin" || "$ext" == "uf2" ]]; then
 				files+=($(basename "$item"))
 			fi
 		fi
 	done
 
+	# Add the collected directories and files to the firmware menu.
+	# Directories will be on top, using their standard formatting.
 	for dir in "${dirs[@]}"; do
 		FIRMWARE_MENU+=("${BOLD_BLUE}${dir}/${DEFAULT}")
 	done
+	# Files below dirs, without formatting.
 	for file in "${files[@]}"; do
 		FIRMWARE_MENU+=("${file}")
 	done
@@ -528,6 +532,8 @@ find_bootloader_mac() {
 #
 #################################################
 find_bootloader() {
+	# If the user wants to cancel, break out of the while loop with double-pressing Ctrl-C
+	trap 'break' SIGINT
 	# To avoid running forever, only look for bootloaders for ~5mins
 	local TIMEOUT=600
 	local counter=0
@@ -566,7 +572,16 @@ find_bootloader() {
 		sleep 0.5
 		(( counter++ ))
 	done
-	[[ -n "$bootloader" ]] && printf " Found it!\n\n" || (printf " Timed out!\n"; back)
+
+	if [[ -n "$bootloader" ]]; then
+		printf " Fount it!\n\n"
+	elif [[ "$counter" -lt "$TIMEOUT" ]]; then
+		printf " Cancelled by the user!\n"
+		back
+	else
+		printf " Timed out!\n"
+		back
+	fi
 }
 
 flash_atmel_dfu() {
@@ -699,8 +714,11 @@ FLASH_MENU_microcontroller() {
 FLASH_MENU_flash() {
 	[[ -z "$firmware" ]] && return
 	enter_menu "flashing"
+	current_menu_tooltip="Press Ctrl-C twice to cancel."
 	redraw "nomenu"
 	find_bootloader
+	# Reset the SIGINT handler to the default
+	trap - SIGINT
 	if [[ "$bootloader" == "atmel-dfu" ]]; then
 		flash_atmel_dfu
 	elif [[ "$bootloader" == "caterina" ]]; then
@@ -774,7 +792,6 @@ key() {
 		local special_key=${1}${REPLY}
 	}
 
-	#DEBUG="${1}:${REPLY}:${special_key}"
 	#case ${special_key:-$1} in
 	case "$REPLY" in
 		# Go up
@@ -802,7 +819,10 @@ key() {
 				if [[ -d "$selected_menu" ]]; then
 					cd "$selected_menu"
 					read_dir
-					# return
+					# Reset scroll position and make '..' the active item
+					# when moving between directories
+					scroll_position=0
+					active_item=1
 				## if a file, select it for flashing
 				elif [[ -f "$selected_menu" ]]; then
 					firmware="${PWD}/$selected_menu"
@@ -810,9 +830,6 @@ key() {
 					# make sure the menu entry only contains the first word,
 					# and add the full path of the selected firmware
 					FLASH_MENU[0]="${FLASH_MENU[0]%%' '*}"
-					# if [[ "${FLASH_MENU[0]: -2}" == "\n" ]]; then
-					# 	FLASH_MENU[0]="${FLASH_MENU[0]:0:-2}"
-					# fi
 					FLASH_MENU[0]+=" : $firmware"
 					# Change the formatting of the  'Flash' button,
 					# from strikethrough to red
@@ -820,6 +837,8 @@ key() {
 					back
 				fi
 			elif [[ "$current_menu_name" == "MICROCONTROLLER_MENU" ]]; then
+				# For visual feedback,
+				# add the selected MCU to the menu item
 				mcu="$selected_menu"
 				FLASH_MENU[1]="${FLASH_MENU[1]%%' '*}"
 				FLASH_MENU[1]+=" : $mcu"
@@ -827,14 +846,10 @@ key() {
 			else
 				eval "${current_menu_name}_${selected_menu_lc}"
 			fi
-			#redraw
-			#${MAIN_MENU[active_item],,}
-			#quit 1
 			;;
 		# Quit
 		"q")
 			# quit 0
-			# echo "$(date +%Y-%m-%d/%H:%M:%S) - $current_menu_name" >> qmk.log
 			[[ "$current_menu_name" != "MAIN_MENU" ]] && exit_menu
 			;;
 	esac
@@ -842,24 +857,10 @@ key() {
 }
 #################################################
 
-#get_term_size
-#clear_screen
-#setup_terminal
-#status_line
-
-#reset_terminal
-# clear screen
-#printf '\e[2J\e[H'
-
-# Move the cursor to last line.
-#printf "\e[${LINES}H"
-#echo "hello"
-
-#printf "\e[H"
-#echo "world"
 main() {
 	# Reset the terminal on the exit signal (e.g.: Ctrl-C)
 	trap 'reset_terminal' EXIT
+
 
 	# Handle window resizing
 	trap 'get_term_size; redraw' WINCH
@@ -867,21 +868,13 @@ main() {
 	get_term_size
 	setup_terminal
 	redraw
-	#title_line
-	#status_line
-	#menu
 
 	while true; do
-		# menu
-		#sleep 0.1
 		read "${read_flags[@]}" -srn 1 && key "$REPLY"
 
 		# Exit if there is no longer a terminal attached.
 		[[ -t 1 ]] || exit 1
 	done
-	#menu
-	# tree /home/peti/Documents
-	# tree
 	reset_terminal
 
 }
