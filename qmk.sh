@@ -7,10 +7,10 @@ MAINTAINER="Erovia"
 #    SANITY CHECK
 #
 #################################################
-#if [[ "${BASH_VERSINFO[0]}" -lt "4" ]]; then
-#	echo "Please use a newer Bash version!"
-#	exit 1
-#fi
+if [[ "${BASH_VERSINFO[0]}" -lt "4" ]]; then
+	echo "Please use a newer Bash version!"
+	exit 1
+fi
 #################################################
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 #################################################
@@ -38,6 +38,9 @@ find_uf2conv() {
 		# Check if a QMK_FIRMWARE repo is available
 		elif [[ -x "${qmk_dir}/util/uf2conv.py" ]]; then
 			echo "${qmk_dir}/util/uf2conv.py"
+		# Check if the QMK_HOME env variable is set
+		elif [[ -n "$QMK_HOME" && -x "${QMK_HOME}/util/uf2conv.py" ]]; then
+			echo "${QMK_HOME}/util/uf2conv.py"
 		fi
 	fi
 }
@@ -355,12 +358,12 @@ read_dir() {
 	# and sorts the dirs and files into their own local variables.
 	for item in "$PWD"/*; do
 		if [[ -d "$item" ]]; then
-			dirs+=($(basename "$item"))
+			dirs+=("$(basename "$item")")
 		else
 			ext="${item##*.}"
 			# We only care about flashable firmware files
 			if [[ "$ext" == "hex" || "$ext" == "bin" || "$ext" == "uf2" ]]; then
-				files+=($(basename "$item"))
+				files+=("$(basename "$item")")
 			fi
 		fi
 	done
@@ -389,7 +392,7 @@ MAIN_MENU_doctor() {
 	DOCTOR_MENU_CONTENT=""
 	DOCTOR_MENU_CONTENT="${BORDER}Environment:${DEFAULT}\n"
 	DOCTOR_MENU_CONTENT+="OS: $OS\n"
-	DOCTOR_MENU_CONTENT+="Shell: $SHELL - $BASH_VERSION\n"
+	DOCTOR_MENU_CONTENT+="Shell version: $BASH_VERSION\n"
 	DOCTOR_MENU_CONTENT+="Terminfo: $TERM\n"
 	DOCTOR_MENU_CONTENT+="Window size: ${COLUMNS}x${LINES}\n"
 	if [ "$OS" == "linux" ]; then
@@ -617,7 +620,8 @@ flash_dfu_util() {
 		printf "${RED}ERROR:${DEFAULT} The 'dfu-util' command is not available!\n"
 		return
 	fi
-	IFS=':' read -r vid pid < <(echo "$details")
+	vid=${details%:*}
+	pid=${details##*:}
 	if [[ "$vid" == "1eaf" && "$pid" == "0003" ]]; then
 		# STM32duino
 		"$DFU_UTIL" -a 2 -d "$details" -R -D "$firmware" 2>&1
@@ -789,7 +793,7 @@ MAIN_MENU_flash() {
 }
 #################################################
 #
-#    Special functions
+#    Menu functions
 #
 #################################################
 quit() {
@@ -846,7 +850,7 @@ key() {
 		# ENTER
 		"")
 			ptr=$(( scroll_position+active_item ))
-			local selected_menu="$(clear_formatting ${current_menu[ptr]})"
+			local selected_menu="$(clear_formatting "${current_menu[ptr]}")"
 			local selected_menu_lc="${selected_menu,,}"
 			if [[ "$selected_menu_lc" == "back" || "$selected_menu_lc" == "quit" ]]; then
 				# These are special, non menu-specific commands
