@@ -120,7 +120,7 @@ DEFAULT="\e[0m"
 RED="\e[31m"
 BORDER="\e[30;41m"
 BOLD_BLUE="\e[1;34m"
-GREY="\e[1;30m"
+DIM="\e[2m"
 STRIKETHROUGH="\e[9m" # Not supported by Mac terminal
 #################################################
 #
@@ -128,7 +128,6 @@ STRIKETHROUGH="\e[9m" # Not supported by Mac terminal
 #
 #################################################
 FIRST_LINE="\e[H"
-#LAST_LINE="\e
 TEXT_START="\e[3H"
 scroll_position=0
 active_item=0
@@ -146,7 +145,7 @@ MAIN_MENU_TOOLTIP="Move: UP/DOWN; Enter: ENTER; Back: Q"
 declare -a FLASH_MENU
 FLASH_MENU[0]="Firmware"
 FLASH_MENU[1]="Microcontroller"
-FLASH_MENU[2]="${STRIKETHROUGH}${GREY}Flash${DEFAULT}\n"
+FLASH_MENU[2]="${STRIKETHROUGH}${DIM}Flash${DEFAULT}\n"
 FLASH_MENU[3]="Back"
 FLASH_MENU_CONTENT="Select the firmware you'd like to flash.\nSelecting an microcontroller is only required for ISP and HID bootloaders."
 FLASH_MENU_TOOLTIP="Move: UP/DOWN; Enter: ENTER; Back: Q"
