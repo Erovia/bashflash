@@ -145,10 +145,11 @@ MAIN_MENU_TOOLTIP="Move: UP/DOWN; Enter: ENTER; Back: Q"
 declare -a FLASH_MENU
 FLASH_MENU[0]="Firmware"
 FLASH_MENU[1]="Microcontroller"
-FLASH_MENU[2]="${STRIKETHROUGH}${DIM}Flash${DEFAULT}\n"
-FLASH_MENU[3]="Back"
+FLASH_MENU[2]="${STRIKETHROUGH}${DIM}Flash${DEFAULT}"
+FLASH_MENU[3]="${STRIKETHROUGH}${DIM}Multiflash${DEFAULT}\n"
+FLASH_MENU[4]="Back"
 FLASH_MENU_CONTENT="Select the firmware you'd like to flash.\nSelecting an microcontroller is only required for ISP and HID bootloaders."
-FLASH_MENU_TOOLTIP="Move: UP/DOWN; Enter: ENTER; Back: Q"
+FLASH_MENU_TOOLTIP="Flash: flash once # Multiflash: continous flashing"
 declare -a FIRMWARE_MENU
 FIRMWARE_MENU[0]="Back"
 FIRMWARE_MENU[1]=".."
@@ -576,10 +577,8 @@ find_bootloader() {
 		printf " Fount it!\n\n"
 	elif [[ "$counter" -lt "$TIMEOUT" ]]; then
 		printf " Cancelled by the user!\n"
-		back
 	else
 		printf " Timed out!\n"
-		back
 	fi
 }
 
@@ -744,6 +743,47 @@ FLASH_MENU_flash() {
 	back
 }
 
+FLASH_MENU_multiflash() {
+	[[ -z "$firmware" ]] && return
+	enter_menu "multiflashing"
+	current_menu_tooltip="Press Ctrl-C twice to cancel."
+	while true; do
+		redraw "nomenu"
+		find_bootloader
+		# Reset the SIGINT handler to the default
+		trap - SIGINT
+		if [[ "$bootloader" == "atmel-dfu" ]]; then
+			flash_atmel_dfu
+		elif [[ "$bootloader" == "caterina" ]]; then
+			flash_caterina
+		elif [[ "$bootloader" == "dfu" ]]; then
+			flash_dfu_util
+		elif [[ "$bootloader" == "wb32-dfu" ]]; then
+			flash_wb32_dfu
+		elif [[ "$bootloader" == "isp" ]]; then
+			flash_isp
+		elif [[ "$bootloader" == "mdboot" ]]; then
+			flash_mdloader
+		elif [[ "$bootloader" == "hid" ]]; then
+			flash_hid_bootloader
+		elif [[ "$bootloader" == "uf2" ]]; then
+			flash_uf2
+		fi
+		bootloader=""
+		details=""
+		mcu=""
+		# If the user wants to cancel, break out of the while loop with double-pressing Ctrl-C
+		trap 'break' SIGINT
+		printf "\n\nFlashing done, new one will start in 5s. Press Ctrl-C to cancel."
+		sleep 5
+	done
+
+	printf "\n\n${RED}>${DEFAULT} Back"
+	read
+	back
+	
+}
+
 MAIN_MENU_flash() {
 	enter_menu "flash"
 }
@@ -832,7 +872,8 @@ key() {
 					FLASH_MENU[0]+=" : $firmware"
 					# Change the formatting of the  'Flash' button,
 					# from strikethrough to red
-					FLASH_MENU[2]="${RED}$(clear_formatting ${FLASH_MENU[2]})${DEFAULT}\n"
+					FLASH_MENU[2]="${RED}$(clear_formatting ${FLASH_MENU[2]})${DEFAULT}"
+					FLASH_MENU[3]="${RED}$(clear_formatting ${FLASH_MENU[3]})${DEFAULT}\n"
 					back
 				fi
 			elif [[ "$current_menu_name" == "MICROCONTROLLER_MENU" ]]; then
