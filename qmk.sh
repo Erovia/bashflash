@@ -151,8 +151,8 @@ FLASH_MENU[1]="Microcontroller"
 FLASH_MENU[2]="${STRIKETHROUGH}${DIM}Flash${DEFAULT}"
 FLASH_MENU[3]="${STRIKETHROUGH}${DIM}Multiflash${DEFAULT}\n"
 FLASH_MENU[4]="Back"
-FLASH_MENU_CONTENT="Select the firmware you'd like to flash.\nSelecting an microcontroller is only required for ISP and HID bootloaders."
-FLASH_MENU_TOOLTIP="Flash: flash once # Multiflash: continous flashing"
+FLASH_MENU_CONTENT="Select the firmware you'd like to flash.\nSelecting a microcontroller is only required for ISP and HID bootloaders."
+FLASH_MENU_TOOLTIP="Flash: flash once # Multiflash: continuous flashing"
 declare -a FIRMWARE_MENU
 FIRMWARE_MENU[0]="Back"
 FIRMWARE_MENU[1]=".."
@@ -577,7 +577,7 @@ find_bootloader() {
 	done
 
 	if [[ -n "$bootloader" ]]; then
-		printf " Fount it!\n\n"
+		printf " Found it!\n\n"
 	elif [[ "$counter" -lt "$TIMEOUT" ]]; then
 		printf " Cancelled by the user!\n"
 	else
