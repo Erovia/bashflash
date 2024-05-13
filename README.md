@@ -1,4 +1,4 @@
-# bashflash
+# ![logo](bashflash_logo.png) bashflash
 A small TUI script to flash firmware
 
 ---
@@ -8,6 +8,8 @@ A small TUI script to flash firmware
 ```bash
 [erovia@pc]$ bash <(curl -s https://raw.githubusercontent.com/Erovia/bashflash/main/bashflash)
 ```
+
+[![demo](https://asciinema.org/a/JNnFcVTM32sMUlXRBq2QFBKwk.svg)](https://asciinema.org/a/JNnFcVTM32sMUlXRBq2QFBKwk)
 
 ## Features
 
