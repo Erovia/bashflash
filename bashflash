@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-VERSION="0.0.1"
+VERSION="0.1"
 MAINTAINER="Erovia"
 
 #################################################
@@ -273,7 +273,7 @@ title_line() {
 	# '%{DEFAULT}':       Reset default colours.
 	printf "${FIRST_LINE}\r${BORDER}%*s\r%s v${VERSION} by ${MAINTAINER}${DEFAULT}" \
 		"$COLUMNS" "" \
-		"qmk.sh"
+		"bashflash"
 }
 
 status_line() {
