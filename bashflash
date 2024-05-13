@@ -35,6 +35,9 @@ find_uf2conv() {
 			echo "${script_dir}/uf2conv.py"
 		elif [[ -x "${script_dir}/uf2conv" ]]; then
 			echo "${script_dir}/uf2conv"
+		# Check the dir the user is in
+		elif [[ -x "${PWD}/uf2conv.py" ]]; then
+			echo "${PWD}/uf2conv.py"
 		# Check if a QMK_FIRMWARE repo is available
 		elif [[ -x "${qmk_dir}/util/uf2conv.py" ]]; then
 			echo "${qmk_dir}/util/uf2conv.py"
